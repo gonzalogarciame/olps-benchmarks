@@ -1,0 +1,79 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\title{Online Portfolio Selection: Benchmarks and a Learned Strategy}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+% TODO: motivation, OLPS problem, contributions
+
+\section{Problem Formulation}
+
+Consider a market of $m$ assets traded over $n$ periods. At the end of
+period $t$, the price relative vector $x_t \in \mathbb{R}^m_{+}$ records,
+for each asset $i$, the ratio of its closing price at $t$ to its closing
+price at $t-1$:
+\[
+    x_t = (x_{t,1}, \dots, x_{t,m}), \qquad
+    x_{t,i} = \frac{p_{t,i}}{p_{t-1,i}}.
+\]
+
+Before observing $x_t$, an online portfolio selection strategy chooses a
+portfolio vector $b_t$ lying on the simplex
+\[
+    \Delta_m = \left\{ b \in \mathbb{R}^m_{+} : \sum_{i=1}^m b_i = 1 \right\},
+\]
+using only the price relative history $x_1, \dots, x_{t-1}$ observed so
+far. Each entry $b_{t,i}$ is the fraction of current wealth allocated to
+asset $i$ for period $t$.
+
+Once $x_t$ is revealed, the portfolio realizes a period return
+\[
+    s_t = b_t \cdot x_t = \sum_{i=1}^m b_{t,i} x_{t,i},
+\]
+and cumulative wealth evolves as
+\[
+    S_t = S_{t-1} \, s_t, \qquad S_0 = 1.
+\]
+
+The goal of an OLPS strategy is to choose the sequence $b_1, \dots, b_n$
+so as to maximize the final wealth $S_n = \prod_{t=1}^n b_t \cdot x_t$,
+without knowledge of future price relatives.
+
+\section{Methods}
+
+\subsection{Benchmarks}
+% TODO: BAH, Best Stock, CRP
+
+\subsection{Follow the Winner}
+% TODO
+
+\subsection{Follow the Loser}
+% TODO
+
+\subsection{Pattern Matching}
+% TODO
+
+\subsection{Meta-Algorithms}
+% TODO
+
+\subsection{Proposed ML/RL Strategy}
+% TODO
+
+\section{Experiments}
+% TODO: datasets, evaluation protocol
+
+\section{Results}
+% TODO
+
+\section{Conclusion}
+% TODO
+
+\end{document}
