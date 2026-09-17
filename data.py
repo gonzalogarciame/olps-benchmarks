@@ -2,12 +2,14 @@ import pandas as pd
 import yfinance as yf
 
 
-def get_price_relatives(
+def get_prices(
     tickers: list[str],
     start: str,
     end: str,
     interval: str = "1d",
 ) -> pd.DataFrame:
+    # yfinance-backed for now; swap the body of this function when
+    # Bloomberg access is available, everything else calls get_price_relatives.
     raw = yf.download(
         tickers,
         start=start,
@@ -22,7 +24,14 @@ def get_price_relatives(
     if isinstance(prices, pd.Series):
         prices = prices.to_frame(tickers[0])
 
-    price_relatives = prices.pct_change() + 1
-    price_relatives = price_relatives.dropna()
+    return prices
 
-    return price_relatives
+
+def get_price_relatives(
+    tickers: list[str],
+    start: str,
+    end: str,
+    interval: str = "1d",
+) -> pd.DataFrame:
+    prices = get_prices(tickers, start, end, interval)
+    return (prices.pct_change() + 1).dropna()
