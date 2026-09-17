@@ -8,6 +8,7 @@ from strategies.bah import BAH
 from strategies.best_stock import BestStock
 from strategies.crp import CRP
 from strategies.eg import EG
+from strategies.ons import ONS
 from strategies.up import UP
 
 TICKERS = ["AAPL", "MSFT", "GOOG"]
@@ -27,6 +28,7 @@ def main() -> None:
         "BestStock": BestStock(n_assets, price_relatives),
         "UP": UP(n_assets),
         "EG": EG(n_assets),
+        "ONS": ONS(n_assets),
     }
 
     print(f"{len(price_relatives)} periods, {n_assets} assets: {TICKERS}")
