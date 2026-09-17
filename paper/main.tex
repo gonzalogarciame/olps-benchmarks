@@ -53,7 +53,74 @@ without knowledge of future price relatives.
 % TODO: BAH, Best Stock, CRP
 
 \subsection{Follow the Winner}
-% TODO
+
+Follow-the-Winner strategies push the portfolio toward whichever fixed
+allocation has performed best on the data seen so far. We implement three
+such strategies, of increasing complexity: Universal Portfolios (UP),
+Exponential Gradient (EG), and Online Newton Step (ONS).
+
+\paragraph{Universal Portfolios (UP).}
+Cover's UP (Cover, 1991) treats every constant rebalanced portfolio
+$b \in \Delta_m$ as a fund manager, and pools their wealth under a prior
+$\mu$ over the simplex:
+\[
+    b_{t+1} = \frac{\int_{\Delta_m} b \, S_t(b) \, d\mu(b)}
+                   {\int_{\Delta_m} S_t(b) \, d\mu(b)}, \qquad
+    S_t(b) = \prod_{\tau=1}^t b \cdot x_\tau.
+\]
+With a uniform $\mu$, this integral has no closed form and is exponential
+to evaluate exactly. We approximate it by Monte Carlo: $K$ portfolios are
+drawn once, uniformly from $\Delta_m$, and $b_{t+1}$ is their wealth-weighted
+average at each period. This is a direct discretization of the definition
+above, not the fast approximate algorithm (a randomized simplex walk) that
+Kalai and Vempala (2002) propose for the same problem at scale;
+we chose the simpler Monte Carlo estimate since exact fidelity to the
+book's algorithmic definition mattered more here than runtime.
+
+\paragraph{Exponential Gradient (EG).}
+EG (Helmbold, Schapire, Singer \& Warmuth, 1998) takes a multiplicative step toward the assets that
+performed well last period, with learning rate $\eta$:
+\[
+    b_{t+1,i} = \frac{b_{t,i} \exp\!\left(\eta \, x_{t,i} / (b_t \cdot x_t)\right)}
+                     {\sum_{j=1}^m b_{t,j} \exp\!\left(\eta \, x_{t,j} / (b_t \cdot x_t)\right)}.
+\]
+As $\eta \to 0$ this degenerates to the uniform constant rebalanced
+portfolio, which we use as a sanity check on the implementation. We use
+$\eta = 0.05$, the value reported as empirically best in the original paper.
+
+\paragraph{Online Newton Step (ONS).}
+ONS (Agarwal, Hazan, Kale \& Schapire, 2006) solves the Follow-the-Regularized-Leader objective
+by taking a Newton step using the curvature of the log-wealth accumulated
+so far, then projecting back onto the simplex under that curvature's norm:
+\begin{align*}
+    A_t &= \sum_{\tau=1}^t \frac{x_\tau x_\tau^\top}{(b_\tau \cdot x_\tau)^2} + I, \\
+    c_t &= \left(1 + \frac{1}{\beta}\right) \sum_{\tau=1}^t \frac{x_\tau}{b_\tau \cdot x_\tau}, \\
+    b_{t+1} &= \Pi_{\Delta_m}^{A_t}\!\left(\delta \, A_t^{-1} c_t\right).
+\end{align*}
+We use $\beta = 1$. The Agarwal et al. paper's own recommended parameters
+are stated with a different symbol, $\gamma = 1/8$, for what plays the same
+role as $\delta$ here; the two are not reconciled explicitly in either
+source we drew from, so treating $\delta = 1/8$ is our interpretive choice
+rather than a direct quote. The projection $\Pi_{\Delta_m}^{A_t}$ is a
+Mahalanobis-type projection under $A_t$, not a Euclidean one, so it is
+solved as a small quadratic program (via \texttt{cvxpy}) at every period
+rather than in closed form.
+
+\emph{Implementation note.} Every strategy in this codebase, including UP
+and EG above, is implemented as a pure function of the price relative
+history seen so far -- it holds no state between calls. For ONS this is a
+deliberate choice, not an oversight: computing $A_t$ and $c_t$ needs every
+past portfolio $b_1, \dots, b_t$, not just the price relatives, and those
+portfolios could instead be cached incrementally as the strategy runs.
+We chose not to, so that ONS keeps the same "just give me the history"
+contract as the rest of the strategies, rather than introducing a strategy
+that silently assumes it is only ever called once per period, in strictly
+increasing order. The trade-off is computational: recomputing the full
+recursion on every call costs $O(n^2)$ quadratic-program solves over a
+backtest of $n$ periods instead of $O(n)$. At the scale used in this
+thesis (a few hundred periods, single-digit numbers of assets) this is a
+few minutes, not a bottleneck; it would need revisiting before ONS could
+be run on a much longer history.
 
 \subsection{Follow the Loser}
 % TODO
