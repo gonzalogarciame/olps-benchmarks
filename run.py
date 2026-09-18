@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import itertools
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from data import get_price_relatives
 from engine import run_backtest
@@ -28,11 +31,20 @@ START = "2023-01-01"
 END = "2024-01-01"
 PLOT_PATH = "wealth_curves.png"
 
+# distinct dash patterns so nearly-overlapping wealth curves stay
+# distinguishable even where color alone would not separate them
+LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
+
 
 def main() -> None:
     price_relatives_df = get_price_relatives(TICKERS, START, END)
     price_relatives = price_relatives_df.values
     n_assets = price_relatives.shape[1]
+
+    # wealth has one more point than price_relatives (S_0 = 1 before any
+    # period), so prepend a date for that point too
+    dates = price_relatives_df.index
+    plot_dates = dates.insert(0, dates[0] - pd.Timedelta(days=1))
 
     strategies = {
         "BAH": BAH(n_assets),
@@ -45,16 +57,28 @@ def main() -> None:
 
     print(f"{len(price_relatives)} periods, {n_assets} assets: {TICKERS}")
 
-    fig, ax = plt.subplots()
-    for name, strategy in strategies.items():
+    fig, (ax_full, ax_zoom) = plt.subplots(1, 2, figsize=(11, 5))
+    for (name, strategy), linestyle in zip(strategies.items(), itertools.cycle(LINESTYLES)):
         wealth = run_backtest(strategy, price_relatives)
         print(f"{name:10s} final wealth = {wealth[-1]:.4f}")
-        ax.plot(wealth, label=name)
+        ax_full.plot(plot_dates, wealth, label=name, linestyle=linestyle)
+        # BestStock is a hindsight-only upper bound (see strategies/best_stock.py),
+        # not a real strategy, so it's excluded here to auto-scale to the
+        # strategies that are actually close enough to need distinguishing
+        if name != "BestStock":
+            ax_zoom.plot(plot_dates, wealth, label=name, linestyle=linestyle)
 
-    ax.set_xlabel("period")
-    ax.set_ylabel("cumulative wealth")
-    ax.set_title(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
-    ax.legend()
+    ax_full.set_xlabel("date")
+    ax_full.set_ylabel("cumulative wealth")
+    ax_full.set_title("all strategies")
+    ax_full.legend()
+
+    ax_zoom.set_xlabel("date")
+    ax_zoom.set_title("excluding BestStock (hindsight upper bound)")
+    ax_zoom.legend()
+
+    fig.suptitle(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
+    fig.autofmt_xdate()
     fig.savefig(PLOT_PATH)
     print(f"saved plot to {PLOT_PATH}")
 
