@@ -11,7 +11,19 @@ from strategies.eg import EG
 from strategies.ons import ONS
 from strategies.up import UP
 
-TICKERS = ["AAPL", "MSFT", "GOOG"]
+# Dow Jones Industrial Average constituents as of 2023-01-01 -- the index's
+# membership was unchanged from 2020-08-31 until 2024-02-26, so this is the
+# correct point-in-time list, not today's DJIA (using today's list here would
+# be the textbook survivorship-bias mistake this repo is trying to avoid).
+# One of the 30, Walgreens Boots Alliance (WBA), is left out: it was taken
+# private in 2025 and yfinance no longer serves any historical data for it at
+# all, even for 2023 when it was still trading -- a live example of exactly
+# the bias this list is trying to fix, not an oversight. See paper/main.tex.
+TICKERS = [
+    "AAPL", "MSFT", "JPM", "WMT", "V", "JNJ", "CSCO", "CVX", "KO", "CAT",
+    "MRK", "PG", "UNH", "HD", "GS", "IBM", "AXP", "AMGN", "CRM", "DIS",
+    "MCD", "BA", "MMM", "TRV", "HON", "NKE", "VZ", "INTC", "DOW",
+]
 START = "2023-01-01"
 END = "2024-01-01"
 PLOT_PATH = "wealth_curves.png"
@@ -41,7 +53,7 @@ def main() -> None:
 
     ax.set_xlabel("period")
     ax.set_ylabel("cumulative wealth")
-    ax.set_title(f"OLPS strategies on {', '.join(TICKERS)}")
+    ax.set_title(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
     ax.legend()
     fig.savefig(PLOT_PATH)
     print(f"saved plot to {PLOT_PATH}")
