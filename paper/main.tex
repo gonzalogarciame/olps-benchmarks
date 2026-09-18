@@ -135,7 +135,40 @@ be run on a much longer history.
 % TODO
 
 \section{Experiments}
-% TODO: datasets, evaluation protocol
+
+\paragraph{Survivorship bias in the asset universe.}
+A recurring methodological problem in the OLPS literature is survivorship
+bias: backtests built from a small set of stocks known today to have
+performed well, rather than the actual universe of stocks that existed at
+the time, including ones that later underperformed, were delisted, or went
+bankrupt. Choosing three of today's largest technology companies for a 2023
+backtest, as an earlier version of this experiment did, is exactly that
+mistake -- the choice is only defensible in hindsight.
+
+We mitigate this by fixing the asset universe to the 30 constituents of the
+Dow Jones Industrial Average as of the backtest's start date, 2023-01-01,
+rather than today's constituents. The index's membership was unchanged from
+2020-08-31 until 2024-02-26, so this list is exact for the period backtested
+here. This is a rule-based, point-in-time selection rather than a hand-picked
+one, though it is not a complete fix: it still reflects one snapshot in time
+rather than tracking membership changes throughout the backtest window (none
+occurred here), and it inherits whatever survivorship bias already exists in
+Dow membership itself.
+
+One of the 30, Walgreens Boots Alliance (WBA), had to be dropped, leaving 29
+assets. WBA was a Dow constituent throughout the backtest window, but was
+taken private in 2025; \texttt{yfinance} now serves no historical price data
+for it at all, even for 2023 while it was still trading. This is not
+incidental -- it is a direct illustration of the mechanism this section is
+about: a free data source that only tracks currently-listed securities makes
+it structurally difficult to include anything that did not survive to the
+present, even when the intent is explicitly to avoid selecting on survival.
+A fully correct fix requires a data source that retains pricing for delisted
+securities and historical (not just current) index membership -- both of
+which Bloomberg provides and \texttt{yfinance} does not -- and is deferred
+until that access is available, consistent with the \texttt{get\_prices}
+indirection in \texttt{data.py}.
+% TODO: evaluation protocol
 
 \section{Results}
 % TODO
