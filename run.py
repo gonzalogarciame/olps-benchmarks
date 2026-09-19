@@ -57,27 +57,20 @@ def main() -> None:
 
     print(f"{len(price_relatives)} periods, {n_assets} assets: {TICKERS}")
 
-    fig, (ax_full, ax_zoom) = plt.subplots(1, 2, figsize=(11, 5))
+    fig, ax = plt.subplots()
     for (name, strategy), linestyle in zip(strategies.items(), itertools.cycle(LINESTYLES)):
         wealth = run_backtest(strategy, price_relatives)
         print(f"{name:10s} final wealth = {wealth[-1]:.4f}")
-        ax_full.plot(plot_dates, wealth, label=name, linestyle=linestyle)
         # BestStock is a hindsight-only upper bound (see strategies/best_stock.py),
-        # not a real strategy, so it's excluded here to auto-scale to the
-        # strategies that are actually close enough to need distinguishing
+        # not a real strategy, so it's left off the graph -- printed above for
+        # reference, but not plotted alongside strategies that make causal decisions
         if name != "BestStock":
-            ax_zoom.plot(plot_dates, wealth, label=name, linestyle=linestyle)
+            ax.plot(plot_dates, wealth, label=name, linestyle=linestyle)
 
-    ax_full.set_xlabel("date")
-    ax_full.set_ylabel("cumulative wealth")
-    ax_full.set_title("all strategies")
-    ax_full.legend()
-
-    ax_zoom.set_xlabel("date")
-    ax_zoom.set_title("excluding BestStock (hindsight upper bound)")
-    ax_zoom.legend()
-
-    fig.suptitle(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
+    ax.set_xlabel("date")
+    ax.set_ylabel("cumulative wealth")
+    ax.set_title(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
+    ax.legend()
     fig.autofmt_xdate()
     fig.savefig(PLOT_PATH)
     print(f"saved plot to {PLOT_PATH}")
