@@ -2,6 +2,8 @@
 
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
 
 \title{Online Portfolio Selection: Benchmarks and a Learned Strategy}
 \author{}
@@ -12,9 +14,26 @@
 \maketitle
 
 \section{Introduction}
-% TODO: motivation, OLPS problem, contributions
+
+This paper documents the construction of an Online Portfolio Selection
+(OLPS) benchmark suite, following Li and Hoi's \emph{Online Portfolio
+Selection: Principles and Algorithms}. The eventual goal is a learned
+strategy compared honestly against the book's classical algorithms. Rather
+than presenting only a final, cleaned-up methodology, this paper is
+organized around how the project actually unfolded: each algorithm was
+implemented, run against real data, and in several cases exposed a problem
+-- a wrong assumption, a methodological pitfall, a mismatch between the
+book's idealized formulas and what a real free data source can provide --
+that changed the scope of what came next. Those changes, and the reasoning
+behind them, are reported alongside the final design, not hidden behind it.
+Section~\ref{sec:formulation} fixes notation. Section~\ref{sec:process}
+is the core of the paper: a chronological account of the project's
+development. Section~\ref{sec:results} reports where things currently
+stand, and Section~\ref{sec:limitations} is explicit about what remains
+open and why it was left that way.
 
 \section{Problem Formulation}
+\label{sec:formulation}
 
 Consider a market of $m$ assets traded over $n$ periods. At the end of
 period $t$, the price relative vector $x_t \in \mathbb{R}^m_{+}$ records,
@@ -47,17 +66,54 @@ The goal of an OLPS strategy is to choose the sequence $b_1, \dots, b_n$
 so as to maximize the final wealth $S_n = \prod_{t=1}^n b_t \cdot x_t$,
 without knowledge of future price relatives.
 
-\section{Methods}
+\section{Development Process}
+\label{sec:process}
 
 \subsection{Benchmarks}
-% TODO: BAH, Best Stock, CRP
+\label{sec:benchmarks}
+
+The first working piece was the \texttt{Strategy} interface: every
+algorithm implements a single method, \texttt{update(history)}, a pure
+function of the price relative history observed so far that returns the
+next portfolio $b_t$. This choice -- no strategy holds state between calls
+-- was made early and, as Section~\ref{sec:ons} describes, later became a
+real constraint the project deliberately chose not to break.
+
+Three benchmarks from the book's Chapter 3 were implemented against this
+interface. Buy-and-Hold (BAH) invests once and lets weights drift with the
+market: $S_n(\text{BAH}(b_1)) = b_1 \cdot \left(\bigodot_{t=1}^n x_t\right)$.
+Constant Rebalanced Portfolios (CRP) actively rebalance back to a fixed
+$b$ every period, $S_n(\text{CRP}(b)) = \prod_{t=1}^n b \cdot x_t$. Best
+Stock invests all capital, from day one, in whichever single asset turns
+out to have the best return \emph{over the entire window}:
+$b^0 = \arg\max_{b \in \Delta_m} b \cdot \left(\bigodot_{t=1}^n x_t\right)$.
+The book states this outright: Best Stock ``can only be calculated with
+complete market sequences'' -- it is a hindsight benchmark by definition,
+not a strategy a real trader could execute, and this distinction turned
+out to matter later (Section~\ref{sec:beststock}).
+
+These three were first verified end to end against a small, three-ticker
+example (Apple, Microsoft, Google) pulled live via \texttt{yfinance}. That
+choice of tickers was convenient and, as it turned out, a methodological
+mistake in its own right -- see Section~\ref{sec:survivorship}.
 
 \subsection{Follow the Winner}
+\label{sec:ftw}
 
-Follow-the-Winner strategies push the portfolio toward whichever fixed
-allocation has performed best on the data seen so far. We implement three
-such strategies, of increasing complexity: Universal Portfolios (UP),
-Exponential Gradient (EG), and Online Newton Step (ONS).
+Before adding new algorithms, the data pipeline was refactored: the single
+function that had called \texttt{yfinance} directly was split into
+\texttt{get\_prices} (the only function that talks to a data backend) and
+\texttt{get\_price\_relatives} (built on top of it, unchanged for every
+caller). The motivation was forward-looking rather than a problem
+encountered yet: the project anticipates eventually moving from
+\texttt{yfinance} to a Bloomberg terminal, and wanted that swap to mean
+changing one function, not every strategy or notebook. No backend
+abstraction beyond a single function was built, since a second backend did
+not exist yet to design against.
+
+Three Follow-the-Winner strategies from Chapter 4 were then implemented,
+in order of increasing complexity: Universal Portfolios (UP), Exponential
+Gradient (EG), and Online Newton Step (ONS).
 
 \paragraph{Universal Portfolios (UP).}
 Cover's UP (Cover, 1991) treats every constant rebalanced portfolio
@@ -68,112 +124,278 @@ $\mu$ over the simplex:
                    {\int_{\Delta_m} S_t(b) \, d\mu(b)}, \qquad
     S_t(b) = \prod_{\tau=1}^t b \cdot x_\tau.
 \]
-With a uniform $\mu$, this integral has no closed form and is exponential
-to evaluate exactly. We approximate it by Monte Carlo: $K$ portfolios are
-drawn once, uniformly from $\Delta_m$, and $b_{t+1}$ is their wealth-weighted
-average at each period. This is a direct discretization of the definition
-above, not the fast approximate algorithm (a randomized simplex walk) that
-Kalai and Vempala (2002) propose for the same problem at scale;
-we chose the simpler Monte Carlo estimate since exact fidelity to the
-book's algorithmic definition mattered more here than runtime.
+With a uniform $\mu$ this integral has no closed form and is exponential
+to evaluate exactly. The book's own practical answer is Kalai and
+Vempala's (2002) fast randomized simplex walk, and the book even reports
+the specific parameters it used for that algorithm
+($\delta_0 = 0.004$, $\delta = 0.005$, 100 samples, 500 steps). We
+considered implementing that, and decided against it: it is a separate
+engineering solution for tractability at scale, not part of UP's actual
+mathematical definition, and would have added a nontrivial random-walk
+sampler to audit for a thesis reference implementation whose priority was
+staying legible and traceable back to the book's own formula. Instead we
+implemented a direct Monte Carlo approximation -- $K$ portfolios drawn
+once, uniformly from $\Delta_m$, wealth-weighted and averaged every period
+-- a literal discretization of the definition above rather than a faster
+but more opaque algorithm for the same thing.
 
 \paragraph{Exponential Gradient (EG).}
-EG (Helmbold, Schapire, Singer \& Warmuth, 1998) takes a multiplicative step toward the assets that
-performed well last period, with learning rate $\eta$:
+EG (Helmbold, Schapire, Singer \& Warmuth, 1998) takes a multiplicative
+step toward the assets that performed well last period:
 \[
     b_{t+1,i} = \frac{b_{t,i} \exp\!\left(\eta \, x_{t,i} / (b_t \cdot x_t)\right)}
                      {\sum_{j=1}^m b_{t,j} \exp\!\left(\eta \, x_{t,j} / (b_t \cdot x_t)\right)}.
 \]
 As $\eta \to 0$ this degenerates to the uniform constant rebalanced
-portfolio, which we use as a sanity check on the implementation. We use
-$\eta = 0.05$, the value reported as empirically best in the original paper.
+portfolio, which was used as a direct sanity check on the implementation
+before trusting it on real data. We use $\eta = 0.05$, the value the book
+itself cites as empirically best.
 
 \paragraph{Online Newton Step (ONS).}
-ONS (Agarwal, Hazan, Kale \& Schapire, 2006) solves the Follow-the-Regularized-Leader objective
-by taking a Newton step using the curvature of the log-wealth accumulated
-so far, then projecting back onto the simplex under that curvature's norm:
+\label{sec:ons}
+ONS (Agarwal, Hazan, Kale \& Schapire, 2006) solves the
+Follow-the-Regularized-Leader objective with a Newton step built from the
+curvature of accumulated log-wealth, then projects back onto the simplex
+under that curvature's own norm:
 \begin{align*}
     A_t &= \sum_{\tau=1}^t \frac{x_\tau x_\tau^\top}{(b_\tau \cdot x_\tau)^2} + I, \\
     c_t &= \left(1 + \frac{1}{\beta}\right) \sum_{\tau=1}^t \frac{x_\tau}{b_\tau \cdot x_\tau}, \\
     b_{t+1} &= \Pi_{\Delta_m}^{A_t}\!\left(\delta \, A_t^{-1} c_t\right).
 \end{align*}
-We use $\beta = 1$. The Agarwal et al. paper's own recommended parameters
-are stated with a different symbol, $\gamma = 1/8$, for what plays the same
-role as $\delta$ here; the two are not reconciled explicitly in either
-source we drew from, so treating $\delta = 1/8$ is our interpretive choice
-rather than a direct quote. The projection $\Pi_{\Delta_m}^{A_t}$ is a
-Mahalanobis-type projection under $A_t$, not a Euclidean one, so it is
-solved as a small quadratic program (via \texttt{cvxpy}) at every period
-rather than in closed form.
+This is where two real implementation decisions came up, not just a
+formula to transcribe.
 
-\emph{Implementation note.} Every strategy in this codebase, including UP
-and EG above, is implemented as a pure function of the price relative
-history seen so far -- it holds no state between calls. For ONS this is a
-deliberate choice, not an oversight: computing $A_t$ and $c_t$ needs every
-past portfolio $b_1, \dots, b_t$, not just the price relatives, and those
-portfolios could instead be cached incrementally as the strategy runs.
-We chose not to, so that ONS keeps the same "just give me the history"
-contract as the rest of the strategies, rather than introducing a strategy
-that silently assumes it is only ever called once per period, in strictly
-increasing order. The trade-off is computational: recomputing the full
-recursion on every call costs $O(n^2)$ quadratic-program solves over a
-backtest of $n$ periods instead of $O(n)$. At the scale used in this
-thesis (a few hundred periods, single-digit numbers of assets) this is a
-few minutes, not a bottleneck; it would need revisiting before ONS could
-be run on a much longer history.
+The first was architectural. $A_t$ and $c_t$ are naturally described as
+running sums, updated incrementally as each period arrives -- and the
+book narrates ONS as an inherently online, stateful algorithm. The
+project's own existing strategies, however, were all pure functions of
+\texttt{history} with no memory between calls (Section~\ref{sec:benchmarks}),
+a contract stated explicitly in the codebase's own documentation. Making
+ONS stateful would have introduced a pattern nothing else in the codebase
+used, and would silently assume \texttt{update()} is always called exactly
+once per period, in strictly increasing order -- true of how the backtest
+engine happens to call strategies today, but not a guarantee anything
+enforces. We chose to keep ONS stateless too: it replays its entire
+recursion -- rebuilding $A_t$, $c_t$, and every past portfolio
+$b_1, \dots, b_t$ -- from the given history on every single call, rather
+than caching anything. The cost is real: roughly $O(n^2)$ quadratic-program
+solves over a full backtest of $n$ periods instead of $O(n)$. At this
+project's current scale (a few hundred periods, on the order of thirty
+assets) this cost was measured directly rather than assumed: a single
+\texttt{update()} call at 29 assets and 20 periods of history took under
+0.3 seconds, and a full end-to-end backtest with ONS took roughly five to
+seven minutes, dominated entirely by these solves. That is acceptable for
+now; it would need revisiting before ONS could be run on a much longer
+history or a much larger asset universe.
 
-\subsection{Follow the Loser}
-% TODO
+The second was the projection itself. $\Pi_{\Delta_m}^{A_t}$ is a
+Mahalanobis-type projection under $A_t$, not a plain Euclidean one, so it
+is a genuine small quadratic program at every period, not a closed-form
+expression. Rather than hand-rolling a QP solver -- exactly the kind of
+intricate, hard-to-audit code this project otherwise avoids -- it is
+solved with \texttt{cvxpy}, added as a dependency for this purpose.
 
-\subsection{Pattern Matching}
-% TODO
+Parameters: $\beta = 1$. The book states what is arguably the same
+step-size constant in two different places with two different symbols --
+Chapter 4's $\delta$ and Chapter 12's $\gamma = 1/8$, both attributed to
+Agarwal et al. (2006) -- without reconciling them explicitly. We treat
+$\delta = 1/8$ as our own interpretive choice, not a direct quote from
+either source.
 
-\subsection{Meta-Algorithms}
-% TODO
+\subsection{The Survivorship Bias Problem}
+\label{sec:survivorship}
 
-\subsection{Proposed ML/RL Strategy}
-% TODO
+With all six benchmark and Follow-the-Winner strategies working, the
+three-ticker universe used since Section~\ref{sec:process}
+(Apple, Microsoft, Google) was revisited directly: it is three of today's
+largest, most successful companies, chosen for convenience with the full
+benefit of hindsight about how they turned out. This is the textbook
+survivorship bias mistake the OLPS literature warns about -- building a
+backtest from stocks known today to have done well, rather than the actual
+universe of stocks that existed at the time, including ones that later
+underperformed, were delisted, or went bankrupt.
 
-\section{Experiments}
+A fully rigorous fix needs two things a free data source may not have:
+point-in-time index membership (what was actually in an index on a past
+date, not today's list) and price history for securities that no longer
+trade. \texttt{yfinance} provides neither -- it only serves data for
+currently-listed tickers. We confirmed this is exactly the kind of
+capability a Bloomberg terminal is built to provide, which the project
+plans to migrate to eventually (Section~\ref{sec:limitations}); until
+then, the fix had to work within \texttt{yfinance}'s limits rather than
+around them.
 
-\paragraph{Survivorship bias in the asset universe.}
-A recurring methodological problem in the OLPS literature is survivorship
-bias: backtests built from a small set of stocks known today to have
-performed well, rather than the actual universe of stocks that existed at
-the time, including ones that later underperformed, were delisted, or went
-bankrupt. Choosing three of today's largest technology companies for a 2023
-backtest, as an earlier version of this experiment did, is exactly that
-mistake -- the choice is only defensible in hindsight.
+The mitigation adopted was a rule-based, point-in-time ticker universe
+instead of a hand-picked one: the 30 constituents of the Dow Jones
+Industrial Average as of the backtest's start date, 2023-01-01,
+reconstructed from the index's known reconstitution history (its
+membership was unchanged from 2020-08-31 until 2024-02-26, so this list is
+exact for the window backtested here) rather than today's constituents.
+This is not a complete fix -- it is one fixed snapshot rather than a
+membership history tracked through the whole window (no changes happened
+to occur here, but none were tracked either), and it inherits whatever
+survivorship bias already exists in how Dow membership itself evolves.
 
-We mitigate this by fixing the asset universe to the 30 constituents of the
-Dow Jones Industrial Average as of the backtest's start date, 2023-01-01,
-rather than today's constituents. The index's membership was unchanged from
-2020-08-31 until 2024-02-26, so this list is exact for the period backtested
-here. This is a rule-based, point-in-time selection rather than a hand-picked
-one, though it is not a complete fix: it still reflects one snapshot in time
-rather than tracking membership changes throughout the backtest window (none
-occurred here), and it inherits whatever survivorship bias already exists in
-Dow membership itself.
+Attempting to fetch all 30 surfaced a direct, live example of the problem
+it was meant to mitigate: Walgreens Boots Alliance (WBA) was a genuine Dow
+constituent throughout 2023, but was taken private in 2025, and
+\texttt{yfinance} now serves \emph{no} historical data for it at all, not
+even for the period while it was actively trading. Rather than treating
+this as a bug to route around, it was left out and documented as exactly
+what it is: evidence that a data source tracking only currently-listed
+securities makes it structurally difficult to include anything that did
+not survive to the present, even when the explicit intent is to avoid
+selecting on survival. The final universe used has 29 assets.
 
-One of the 30, Walgreens Boots Alliance (WBA), had to be dropped, leaving 29
-assets. WBA was a Dow constituent throughout the backtest window, but was
-taken private in 2025; \texttt{yfinance} now serves no historical price data
-for it at all, even for 2023 while it was still trading. This is not
-incidental -- it is a direct illustration of the mechanism this section is
-about: a free data source that only tracks currently-listed securities makes
-it structurally difficult to include anything that did not survive to the
-present, even when the intent is explicitly to avoid selecting on survival.
-A fully correct fix requires a data source that retains pricing for delisted
-securities and historical (not just current) index membership -- both of
-which Bloomberg provides and \texttt{yfinance} does not -- and is deferred
-until that access is available, consistent with the \texttt{get\_prices}
-indirection in \texttt{data.py}.
-% TODO: evaluation protocol
+\subsection{Visualization Iteration}
+\label{sec:viz}
 
-\section{Results}
-% TODO
+The end-to-end script's wealth-curve plot went through several rounds of
+revision driven directly by not being able to read it. The original
+version plotted wealth against a bare period index; it was changed to use
+the actual trading dates once the universe grew past a toy example.
+Separately, with six strategies on one axis, several were close enough in
+performance that color alone did not distinguish them, so each strategy
+was given a distinct linestyle as well.
+
+Splitting further, once the ticker universe grew to 29 assets, Best
+Stock's hindsight-driven wealth pulled far enough ahead that it compressed
+the other five strategies -- which perform close to each other -- into an
+indistinguishable band at the bottom of the same axes. The first fix was
+a second, zoomed panel that excluded Best Stock so the close performers
+could actually be compared.
+
+\label{sec:beststock}
+That fix was itself reconsidered once Best Stock's nature was examined
+more carefully. As Section~\ref{sec:process} notes, and as the book states
+directly, Best Stock is defined using the entire backtest window in
+advance -- it is not a strategy that makes decisions causally the way
+BAH, CRP, UP, EG, and ONS do, all of which are verified (via how the
+backtest engine calls them) to see only $x_1, \dots, x_{t-1}$ before
+producing $b_t$. Since Best Stock cannot be made realistic without
+changing what it is -- that would stop it from being the hindsight ceiling
+the book defines it as -- it was removed from the plot entirely rather
+than kept as a labeled reference. It is still computed and printed to the
+console for context, but the graph now shows only strategies that decide
+under the same causal constraint.
+
+\subsection{Evaluation Metrics}
+
+Throughout all of the above, strategies could only be compared by
+eyeballing final wealth and wealth curves. The book itself defines a
+standard evaluation toolkit in Chapter 2.3 -- annualized percentage yield
+(APY), annualized volatility, Sharpe ratio, drawdown and maximum drawdown,
+Calmar ratio, and a Student's $t$-test for whether observed profitability
+could be explained by chance -- which had never been implemented, despite
+predating even the Benchmarks chapter. This gap was identified as the
+highest-value next step precisely because closing it required no new
+algorithmic content.
+
+Existing libraries (\texttt{empyrical}, \texttt{quantstats}, \texttt{ffn})
+implement equivalent metrics and were considered as a shortcut. We chose
+to hand-roll every formula directly from the book instead, for the same
+reason UP, EG, and ONS were: a library's own conventions for annualization,
+degrees of freedom, or the exact construction of a ratio are not guaranteed
+to match the book's specific definitions, and confirming that they do
+would mean reading the library's source anyway. Every formula in this
+project is kept traceable line-by-line back to the book rather than
+delegated to a dependency whose internals are trusted on faith. Each metric
+was checked by hand against a small synthetic wealth series before being
+trusted on real data.
+
+\section{Current Results}
+\label{sec:results}
+
+Table~\ref{tab:results} reports final wealth and the Chapter 2.3 metrics
+for all six strategies over the 29-asset, point-in-time Dow Jones universe
+described in Section~\ref{sec:survivorship}, for the 2023-01-01 to
+2024-01-01 window.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & MDD & Calmar & $t$ (p) \\
+\midrule
+BAH        & 1.1828 & 18.52\% & 11.64\% & 1.25 & 9.33\%  & 1.99 & 1.51 (0.066) \\
+CRP        & 1.1795 & 18.18\% & 11.53\% & 1.23 & 8.97\%  & 2.03 & 1.50 (0.068) \\
+UP         & 1.1799 & 18.22\% & 11.58\% & 1.23 & 9.06\%  & 2.01 & 1.50 (0.068) \\
+EG         & 1.1796 & 18.20\% & 11.53\% & 1.23 & 8.98\%  & 2.03 & 1.50 (0.068) \\
+ONS        & 1.2292 & 23.23\% & 12.75\% & 1.51 & 7.36\%  & 3.16 & 1.69 (0.046) \\
+\midrule
+Best Stock$^*$ & 1.9524 & 96.82\% & 29.61\% & 3.14 & 28.28\% & 3.42 & 2.42 (0.008) \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Final wealth and Chapter 2.3 evaluation metrics, 2023-01-01 to
+2024-01-01, 29 Dow Jones constituents as of the start date.
+$^*$Best Stock is reported separately since it is a hindsight benchmark,
+not a causal strategy (Section~\ref{sec:beststock}).}
+\label{tab:results}
+\end{table}
+
+Among the five causal strategies, ONS is best on every metric reported --
+higher Sharpe and Calmar ratios, lower maximum drawdown, and the most
+statistically significant profitability ($p = 0.046$ against $p \approx
+0.07$ for the rest). BAH, CRP, UP, and EG perform almost identically to
+each other, which is visible directly in the wealth-curve plot
+(Section~\ref{sec:viz}) as four lines that overlap for nearly the
+entire window -- a genuine feature of how these four behave on this
+particular basket over this particular year, not a rendering artifact.
+Best Stock's numbers are far ahead on every metric, including
+risk-adjusted ones, which is expected: it is choosing, with perfect
+hindsight, the single asset that happened to perform best (Salesforce,
+which nearly doubled over the window), while the causal strategies are
+diversifying across a basket that also includes several laggards.
+
+\section{Limitations and Future Work}
+\label{sec:limitations}
+
+Several gaps were identified during this work and deliberately left open
+rather than addressed immediately, each for a stated reason:
+
+\begin{itemize}
+    \item \textbf{No automated test suite.} Every component so far --
+    benchmarks, Follow-the-Winner strategies, and the Chapter 2.3 metrics
+    -- has been verified manually: by hand-computed checks on small
+    synthetic examples, and by running the full pipeline against real
+    data and inspecting the output. This was a deliberate choice to match
+    the project's existing verification style rather than introduce a
+    testing framework partway through, but it does not scale indefinitely
+    as more algorithms are added.
+    \item \textbf{Survivorship bias is mitigated, not eliminated.} The
+    point-in-time Dow universe (Section~\ref{sec:survivorship}) fixes the
+    ``chose today's winners'' mistake but not the underlying data
+    limitation: \texttt{yfinance} cannot supply historical index
+    membership through time or price history for delisted securities.
+    A fully correct fix needs both, and both are capabilities the planned
+    Bloomberg terminal migration is expected to provide -- the
+    \texttt{get\_prices} indirection in \texttt{data.py} exists
+    specifically so that migration touches one function, not every
+    strategy or script.
+    \item \textbf{A known but unfixed data bug.} \texttt{yfinance} returns
+    multi-ticker downloads with columns sorted alphabetically rather than
+    in the order tickers were requested. This does not affect any
+    backtest result, since every strategy operates on asset columns
+    positionally and consistently, but it would silently mislabel any
+    future code that assumes the two orders match.
+    \item \textbf{Remaining book chapters.} Follow the Loser, Pattern
+    Matching, Meta-Algorithms, and the proposed learned strategy in this
+    paper's own title are not yet implemented.
+\end{itemize}
 
 \section{Conclusion}
-% TODO
+
+The value of this project so far is not only the six algorithms
+implemented, but the practical realities that surfaced while translating
+the book's idealized formulas into working code against real data: a
+free data source's blind spot toward anything that did not survive to the
+present, an architectural contract worth preserving even when a textbook
+algorithm's own narration pulls against it, and formulas the book itself
+states with inconsistent notation across chapters. Each of these changed
+the scope of the work in a specific, traceable way. That process is
+reported here as part of the project's contribution, not smoothed over in
+favor of a cleaner-looking final result.
 
 \end{document}
