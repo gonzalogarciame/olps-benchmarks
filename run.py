@@ -7,6 +7,7 @@ import pandas as pd
 
 from data import get_price_relatives
 from engine import run_backtest
+from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
 from strategies.bah import BAH
 from strategies.best_stock import BestStock
 from strategies.crp import CRP
@@ -60,7 +61,13 @@ def main() -> None:
     fig, ax = plt.subplots()
     for (name, strategy), linestyle in zip(strategies.items(), itertools.cycle(LINESTYLES)):
         wealth = run_backtest(strategy, price_relatives)
-        print(f"{name:10s} final wealth = {wealth[-1]:.4f}")
+        t_stat, p_value = t_test(wealth)
+        print(
+            f"{name:10s} final wealth = {wealth[-1]:.4f}  APY = {apy(wealth):+.2%}  "
+            f"vol = {volatility(wealth):.2%}  Sharpe = {sharpe_ratio(wealth):.2f}  "
+            f"MDD = {max_drawdown(wealth):.2%}  Calmar = {calmar_ratio(wealth):.2f}  "
+            f"t = {t_stat:.2f} (p = {p_value:.3f})"
+        )
         # BestStock is a hindsight-only upper bound (see strategies/best_stock.py),
         # not a real strategy, so it's left off the graph -- printed above for
         # reference, but not plotted alongside strategies that make causal decisions
