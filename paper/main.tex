@@ -303,13 +303,207 @@ delegated to a dependency whose internals are trusted on faith. Each metric
 was checked by hand against a small synthetic wealth series before being
 trusted on real data.
 
+\subsection{Follow the Loser}
+\label{sec:ftl}
+
+The next block of the book's Part II principles, Chapter 5, is the
+mean-reversion (``follow the loser'') counterpart to Follow the Winner:
+rather than betting on trends continuing, these strategies transfer
+wealth from a period's outperformers to its underperformers. The chapter
+itself defines only one concrete algorithm, Anticorrelation (Anticor);
+the book's own machine-learning contributions built on the same
+mean-reversion principle -- Passive Aggressive Mean Reversion (PAMR),
+Confidence Weighted Mean Reversion (CWMR), and Online Moving Average
+Reversion (OLMAR) -- live in Part III, three chapters later. All four
+were implemented together, mirroring how Follow the Winner already
+spanned multiple chapters rather than a single one.
+
+\paragraph{Anticorrelation (Anticor).}
+Borodin, El-Yaniv \& Gogan's Anticor (2004, book \S5.2) compares two
+adjacent windows of $w$ periods of log price relatives, and claims a
+wealth transfer from asset $i$ to asset $j$ whenever $i$ outperformed
+$j$ in the more recent window and the two are positively
+cross-correlated, sized by that correlation net of each asset's own
+negative autocorrelation. Unlike the other three strategies, Anticor's
+claim-and-transfer mechanism keeps the portfolio on the simplex by
+construction -- weight only ever moves between existing entries of
+$b_t$ -- so no separate projection step is needed. The book does not
+state a default window size; we chose $w=5$, matching PAMR/OLMAR's own
+book-cited windows, and note this explicitly as our own choice rather
+than a quote.
+
+\paragraph{Passive Aggressive Mean Reversion (PAMR).}
+PAMR (Li, Hoi \& Gopalkrishnan, 2012, book Ch.~9) defines an
+$\epsilon$-insensitive loss on the realized portfolio return,
+$\ell_\epsilon(b_t; x_t) = \max(0, b_t \cdot x_t - \epsilon)$, and takes
+a closed-form passive-aggressive step toward the underperforming
+assets:
+\[
+    b_{t+1} = \Pi_{\Delta_m}\!\left(b_t - \tau_t (x_t - \bar{x}_t \mathbf{1})\right),
+    \qquad
+    \tau_t = \frac{\ell_\epsilon(b_t; x_t)}{\lVert x_t - \bar{x}_t \mathbf{1} \rVert^2},
+\]
+where $\bar{x}_t$ is the mean price relative across assets and
+$\Pi_{\Delta_m}$ is a plain Euclidean projection onto the simplex.
+$\epsilon = 0.5$ is the book's own real-market default (Sec.~13.3.2);
+an earlier attempt used $\epsilon = 1$, chosen because it exactly
+reproduces the book's own worked example (Table 9.1) step by step --
+but the book itself notes $\epsilon \geq 1$ degrades PAMR toward
+uniform CRP, and $\epsilon = 1$ turned out to be far too passive on
+real data (Section~\ref{sec:ftl-verify}).
+
+\paragraph{Confidence Weighted Mean Reversion (CWMR).}
+CWMR (Li, Hoi, Zhao \& Gopalkrishnan, 2013, book Ch.~10) is the most
+involved of the four: $b$ is modeled as a Gaussian $\mathcal{N}(\mu,
+\Sigma)$ with diagonal $\Sigma$, so each asset's weight carries its own
+confidence (a smaller variance meaning more confidence). Each period
+solves a scalar Lagrange multiplier $\lambda_{t+1}$ from a quadratic
+whose coefficients are given only in the book's Appendix B.3.1, not the
+main chapter text -- getting this wrong silently would have produced a
+strategy that runs without error but computes something other than
+CWMR, so the appendix was read directly rather than reconstructed from
+the chapter's higher-level description. We implement the CWMR-Var
+variant (the book's first, simpler linearization) with $\phi = 1.64$
+($\approx 90\%$ confidence) and $\epsilon = 0.5$, both the book's own
+real-market defaults (Sec.~13.3.3).
+
+\paragraph{Online Moving Average Reversion (OLMAR).}
+OLMAR (Li \& Hoi, 2012, book Ch.~11) targets multi-period rather than
+single-period reversion: it predicts the next price relative from a
+simple moving average of the last $w-1$ observed relatives,
+\[
+    \hat{x}_{t+1} = \frac{1}{w}\left(1 + \frac{1}{x_t} + \frac{1}{x_t x_{t-1}}
+    + \cdots + \frac{1}{\prod_{i=0}^{w-2} x_{t-i}}\right),
+\]
+then runs the same passive-aggressive step as PAMR against the
+\emph{predicted} relative rather than the realized one. We use the
+book's own real-market reference settings, $w=5$ and $\epsilon=10$
+(Sec.~13.3.4, Figs.~13.9-13.10) -- not the $\epsilon=2$ used in the
+book's own Table 11.2, which is illustrative for that section's small
+two-asset toy markets specifically, a distinction that mattered in
+practice (Section~\ref{sec:ftl-verify}).
+
+\paragraph{A shared projection, and why it avoids \texttt{cvxpy}.}
+PAMR, CWMR, and OLMAR all need the same Euclidean projection onto the
+simplex after their unconstrained update step -- the same constraint
+ONS's own projection solves (Section~\ref{sec:ons}), but under the
+identity metric rather than ONS's curvature matrix $A_t$. Reusing
+ONS's \texttt{cvxpy}-based approach was the first instinct, but ONS's
+own stateless-replay design (Section~\ref{sec:ons}) already costs
+$O(n^2)$ solves over a backtest of $n$ periods; adding three more
+strategies with the same replay contract and a \texttt{cvxpy} call
+inside that $O(n^2)$ loop would have made a multi-year backtest
+impractical. The book itself cites a closed-form, sort-based simplex
+projection for exactly this case (Duchi et al., 2008), which is what
+PAMR/CWMR/OLMAR use instead -- an $O(m \log m)$ formula, not a general
+quadratic program, extracted once into a shared
+\texttt{strategies/simplex.py} used by all three.
+
+\paragraph{Verification.}
+\label{sec:ftl-verify}
+With no automated test suite (Section~\ref{sec:limitations}), each
+strategy was checked the same way the project has checked every
+algorithm so far: against small examples the book works out by hand.
+PAMR against the book's Table 9.1 and CWMR against its Table 10.2 both
+reproduce the book's own portfolio sequence exactly, period by period,
+on the two-asset markets those tables describe. This is also how the
+$\epsilon=1$ (PAMR) and $\epsilon=2$ (OLMAR) parameter choices were
+first tried and then corrected: both values were the ones that
+reproduce a book worked example exactly, which is a reasonable thing to
+optimize for on a toy table but turned out to be the wrong thing to
+optimize for on real data, where the book's own separately-stated
+empirical defaults ($\epsilon=0.5$ for PAMR, $\epsilon=10$ for OLMAR)
+are what it actually recommends. Anticor was checked differently, since
+the book gives no worked numeric table for it: on a synthetic market
+with one asset trending up and the other flat, it correctly transfers
+weight to the laggard; on the book's own alternating two-asset example
+(Table 5.1) it makes no transfer at all, which is also correct -- that
+market is perfectly \emph{negatively} cross-correlated between the two
+windows Anticor compares, and Anticor's mechanism requires positive
+cross-correlation to trigger, a real edge case rather than a bug.
+
+\subsection{Revisiting Survivorship Bias: Tracking Reconstitution}
+\label{sec:survivorship2}
+
+Section~\ref{sec:survivorship}'s point-in-time snapshot fixed the
+``chose today's winners'' mistake but, by its own admission, not the
+deeper one: it is a single fixed ticker list, valid only because the
+specific year backtested (2023) happened to fall inside a stretch where
+Dow membership never changed. Revisiting it surfaced a second, related
+problem: 2023 was also a strong bull year, so Buy-and-Hold already wins
+outright (Table~\ref{tab:results-2023}) and there is no fluctuating
+market for a mean-reversion strategy to exploit -- the same condition
+the book's own Table 5.1 uses to motivate Follow the Loser in the first
+place. Both problems pointed at the same fix: a backtest window where
+the market actually moved enough to test mean reversion is also a
+window more likely to have seen a real Dow reconstitution, since both
+are symptoms of the same thing -- the 2023 window was simply an
+unusually quiet year on both counts.
+
+The financial crisis, 2007-06-01 to 2009-12-31, was chosen on exactly
+that reasoning: a genuine crash and partial recovery, and a period
+during which the Dow's membership changed three times, each verified
+against Wikipedia's ``List of changes to the Dow Jones Industrial
+Average'' and contemporary news coverage rather than recalled from
+memory alone. Altria and Honeywell were replaced by Bank of America and
+Chevron (2008-02-19); AIG was replaced by Kraft Foods (2008-09-22); and
+General Motors and Citigroup were replaced by Cisco and Travelers
+(2009-06-08), the last change made, in Dow Jones's own words at the
+time, because GM and Citigroup were ``in the midst of substantial
+restructuring.''
+
+Tracking this properly needed two things Section~\ref{sec:survivorship}
+did not: a membership \emph{timeline} rather than one snapshot
+(\texttt{djia\_universe.py}, a literal table of the three reconstitution
+dates above), and a way to run a backtest whose asset universe changes
+mid-window. The existing \texttt{Strategy} interface already resets
+\texttt{history} to empty at the start of any single \texttt{update()}
+replay (Section~\ref{sec:ftw}), so the natural fix was not to make
+\texttt{n\_assets} itself dynamic, but to give each reconstitution
+segment its own fresh strategy instance -- correct, not a workaround,
+since asset columns mean different tickers before and after a
+reconstitution even when the count stays the same. A new orchestrator,
+\texttt{engine.run\_backtest\_segmented}, runs the existing
+\texttt{run\_backtest} once per segment and chains wealth across
+segment boundaries by rebasing each segment's own $S_0 = 1$ onto the
+previous segment's final wealth.
+
+Building the 30-ticker roster as of 2007-06-01 surfaced, and confirmed
+directly against \texttt{yfinance} rather than assumed, two further
+gaps of exactly the kind Section~\ref{sec:survivorship} documented for
+Walgreens Boots Alliance. General Motors filed Chapter 11 in June 2009;
+its pre-bankruptcy equity was cancelled in the reorganization (by the
+time the Dow itself dropped it, the index listed the entity as
+``Motors Liquidation Company,'' not GM), and \texttt{yfinance} serves no
+historical data for it at all for the period it was still trading.
+Kraft Foods Inc. has no single successor after its 2012 split into
+Mondelez and Kraft Foods Group, and its ticker, \texttt{KFT}, is
+likewise unavailable. Both are dropped from every segment in which they
+would otherwise appear, the same treatment WBA received, and for the
+same reason: evidence of the data source's blind spot toward securities
+that did not survive to the present, not a bug to route around. A third
+ticker, United Technologies (\texttt{UTX}), looked like the same
+problem at first -- \texttt{yfinance} has no data under that symbol
+either -- but turned out not to be one: the company is still trading,
+merged into Raytheon Technologies in 2020, and its continuous price
+history (including the 2007-2009 period) is simply filed under the new
+ticker, \texttt{RTX}. Fetching it under its current symbol while
+displaying it as \texttt{UTX} is a rename, not a survivorship gap, and
+the two were kept explicitly distinct in \texttt{djia\_universe.py}
+rather than folded into the same exclusion list.
+
+The resulting universe has 29 assets in three of the four segments and
+28 in the third (2008-09-22 to 2009-06-08, where both GM and KFT are
+simultaneously absent).
+
 \section{Current Results}
 \label{sec:results}
 
-Table~\ref{tab:results} reports final wealth and the Chapter 2.3 metrics
-for all six strategies over the 29-asset, point-in-time Dow Jones universe
-described in Section~\ref{sec:survivorship}, for the 2023-01-01 to
-2024-01-01 window.
+Table~\ref{tab:results-2023} reports final wealth and the Chapter 2.3
+metrics for the original six strategies over the 29-asset, point-in-time
+Dow Jones universe described in Section~\ref{sec:survivorship}, for the
+2023-01-01 to 2024-01-01 window -- the results as they stood before
+Follow the Loser and the reconstitution fix (Sections~\ref{sec:ftl}-\ref{sec:survivorship2}).
 
 \begin{table}[h]
 \centering
@@ -332,7 +526,7 @@ Best Stock$^*$ & 1.9524 & 96.82\% & 29.61\% & 3.14 & 28.28\% & 3.42 & 2.42 (0.00
 2024-01-01, 29 Dow Jones constituents as of the start date.
 $^*$Best Stock is reported separately since it is a hindsight benchmark,
 not a causal strategy (Section~\ref{sec:beststock}).}
-\label{tab:results}
+\label{tab:results-2023}
 \end{table}
 
 Among the five causal strategies, ONS is best on every metric reported --
@@ -349,6 +543,81 @@ hindsight, the single asset that happened to perform best (Salesforce,
 which nearly doubled over the window), while the causal strategies are
 diversifying across a basket that also includes several laggards.
 
+Table~\ref{tab:results-crisis} reports the same metrics for all ten
+strategies -- the original six plus Anticor, PAMR, CWMR, and OLMAR --
+over the reconstitution-tracked, 28-29 asset Dow Jones universe
+described in Section~\ref{sec:survivorship2}, for the 2007-06-01 to
+2009-12-31 window.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & MDD$^\dagger$ & Calmar & $t$ (p) \\
+\midrule
+BAH        & 0.8512 & $-$6.07\%  & 31.11\%  & $-$0.32 & 55.73\%  & $-$0.11 & $-$0.07 (0.530) \\
+CRP        & 0.8928 & $-$4.31\%  & 34.33\%  & $-$0.24 & 60.12\%  & $-$0.07 & 0.07 (0.473) \\
+UP         & 0.8885 & $-$4.49\%  & 34.20\%  & $-$0.25 & 59.99\%  & $-$0.07 & 0.06 (0.477) \\
+EG         & 0.8900 & $-$4.43\%  & 34.12\%  & $-$0.25 & 59.86\%  & $-$0.07 & 0.06 (0.476) \\
+ONS        & 0.2696 & $-$39.94\% & 96.65\%  & $-$0.45 & 99.95\%  & $-$0.40 & $-$0.03 (0.513) \\
+Anticor    & 0.1619 & $-$50.74\% & 97.61\%  & $-$0.56 & 112.97\% & $-$0.45 & $-$0.30 (0.619) \\
+PAMR       & 0.0331 & $-$73.45\% & 99.76\%  & $-$0.78 & 112.43\% & $-$0.65 & $-$1.25 (0.893) \\
+CWMR       & 0.0327 & $-$73.54\% & 99.99\%  & $-$0.78 & 112.40\% & $-$0.65 & $-$1.25 (0.893) \\
+OLMAR      & 0.0903 & $-$60.74\% & 106.97\% & $-$0.61 & 107.60\% & $-$0.56 & $-$0.47 (0.680) \\
+\midrule
+Best Stock$^*$ & 2.3105 & $+$38.50\% & 33.12\% & 1.04 & 32.33\% & 1.19 & 1.84 (0.033) \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Final wealth and Chapter 2.3 evaluation metrics, 2007-06-01 to
+2009-12-31, reconstitution-tracked Dow Jones universe (29 assets in three
+segments, 28 in the segment between the AIG and GM/Citigroup changes).
+$^*$Best Stock is reported separately (Section~\ref{sec:beststock});
+its hindsight-best asset is now chosen per reconstitution segment and
+chained, the natural analog once the universe itself changes.
+$^\dagger$MDD here is the absolute (not peak-relative) drawdown already
+defined in Section~\ref{sec:process}'s metrics, $\max_t(\max_{\tau \leq t}
+S_\tau - S_t)$; it can exceed 100\% once a strategy's peak wealth is
+itself above 1, as several are here before the crash.}
+\label{tab:results-crisis}
+\end{table}
+
+This window changes the ranking substantially. Buy-and-Hold no longer
+wins by default -- every strategy loses money except Best Stock, which
+is expected of a window chosen precisely because it is a real crash, not
+a bull run. ONS, the clear winner on the 2023 window, is now among the
+worst of the trend-following strategies ($-39.94\%$ APY), consistent
+with a momentum-style algorithm meeting a market that reverses sharply
+instead of trending. BAH, CRP, UP, and EG again move almost identically
+to each other, still clustering the way they did in
+Table~\ref{tab:results-2023}, but now all are mildly negative rather
+than mildly positive.
+
+The four Follow-the-Loser strategies do not do well here, and the book
+itself predicts exactly this ranking for this specific dataset. Chapter
+11 states plainly that on the DJIA dataset ``PAMR performs the worst
+among the state of the art,'' that CWMR similarly ``fails on DJIA,''
+that Anticor ``performs much better'' than either ``due to its
+heuristic nature,'' and that OLMAR's multi-period reversion does better
+than PAMR/CWMR's single-period assumption on this dataset specifically
+-- in the book's own words, this pattern ``validates the motivating
+multiperiod mean reversion.'' Table~\ref{tab:results-crisis} reproduces
+that exact ordering (PAMR $\approx$ CWMR $\ll$ OLMAR $<$ Anticor) on an
+independent DJIA window the book never tested: a financial-crisis-era
+basket of 28-29 different constituents, not whatever specific DJIA
+dataset and period the book's own Chapter 13 experiments used. Read
+charitably, this is the single-period mean reversion assumption failing
+exactly where the book says it should -- large, liquid, fairly
+efficiently-priced blue-chip stocks are a harder market for
+next-period reversion bets than the book's other four benchmark
+datasets, and the failure mode (PAMR and CWMR concentrating aggressively
+into whatever looks most oversold each single day, in a market that
+kept falling for months) is visible directly in the wealth-curve plot
+as a near-total collapse by late 2008 that never recovers, while
+Anticor's heuristic, claim-based transfers and OLMAR's moving-average
+smoothing both react more slowly and lose far less.
+
 \section{Limitations and Future Work}
 \label{sec:limitations}
 
@@ -357,20 +626,27 @@ rather than addressed immediately, each for a stated reason:
 
 \begin{itemize}
     \item \textbf{No automated test suite.} Every component so far --
-    benchmarks, Follow-the-Winner strategies, and the Chapter 2.3 metrics
-    -- has been verified manually: by hand-computed checks on small
-    synthetic examples, and by running the full pipeline against real
+    benchmarks, Follow-the-Winner and Follow-the-Loser strategies, and
+    the Chapter 2.3 metrics -- has been verified manually: by
+    hand-computed checks against the book's own worked examples on small
+    synthetic markets, and by running the full pipeline against real
     data and inspecting the output. This was a deliberate choice to match
     the project's existing verification style rather than introduce a
     testing framework partway through, but it does not scale indefinitely
     as more algorithms are added.
-    \item \textbf{Survivorship bias is mitigated, not eliminated.} The
-    point-in-time Dow universe (Section~\ref{sec:survivorship}) fixes the
-    ``chose today's winners'' mistake but not the underlying data
-    limitation: \texttt{yfinance} cannot supply historical index
-    membership through time or price history for delisted securities.
-    A fully correct fix needs both, and both are capabilities the planned
-    Bloomberg terminal migration is expected to provide -- the
+    \item \textbf{Survivorship bias is fixed for one specific window, not
+    as a general capability.} Section~\ref{sec:survivorship2}'s
+    reconstitution timeline is a genuine fix for the 2007-2009 backtest --
+    real point-in-time membership, tracked through three actual Dow
+    changes, not one static snapshot -- but \texttt{djia\_universe.py} is
+    a hand-built, hand-verified table specific to that window, not a
+    general mechanism that would automatically cover a different date
+    range. The underlying data limitation is also still only worked
+    around, not removed: \texttt{yfinance} cannot supply price history
+    for delisted securities at all (GM, KFT, and WBA are permanent gaps,
+    not ones a wider date range or more careful code would recover), and
+    a fully correct fix remains a capability the planned Bloomberg
+    terminal migration is expected to provide -- the
     \texttt{get\_prices} indirection in \texttt{data.py} exists
     specifically so that migration touches one function, not every
     strategy or script.
@@ -378,24 +654,50 @@ rather than addressed immediately, each for a stated reason:
     multi-ticker downloads with columns sorted alphabetically rather than
     in the order tickers were requested. This does not affect any
     backtest result, since every strategy operates on asset columns
-    positionally and consistently, but it would silently mislabel any
-    future code that assumes the two orders match.
-    \item \textbf{Remaining book chapters.} Follow the Loser, Pattern
-    Matching, Meta-Algorithms, and the proposed learned strategy in this
-    paper's own title are not yet implemented.
+    positionally and consistently (and the reconstitution-segmented
+    backtest now explicitly reindexes each segment by ticker label rather
+    than relying on request order, Section~\ref{sec:survivorship2}), but
+    it would silently mislabel any future code that assumes the two
+    orders match.
+    \item \textbf{Maximum drawdown is absolute, not peak-relative.} The
+    Chapter 2.3 metric implemented in Section~\ref{sec:process} is
+    $\max_t(\max_{\tau \leq t} S_\tau - S_t)$, an absolute wealth
+    drop rather than the conventional $\max_t(1 - S_t / \max_{\tau \leq t}
+    S_\tau)$ normalized by the peak. This went unnoticed while every
+    strategy's wealth stayed close to 1 (Table~\ref{tab:results-2023}),
+    since the two definitions barely differ there, but is visible in
+    Table~\ref{tab:results-crisis}, where strategies that peaked above 1
+    before crashing report drawdowns past 100\%. The numbers are correct
+    under the definition actually implemented; whether to switch to the
+    conventional relative definition is left open rather than changed
+    silently alongside unrelated work.
+    \item \textbf{Remaining book chapters.} Pattern Matching,
+    Meta-Algorithms, and the proposed learned strategy in this paper's
+    own title are not yet implemented.
 \end{itemize}
 
 \section{Conclusion}
 
-The value of this project so far is not only the six algorithms
+The value of this project so far is not only the ten algorithms
 implemented, but the practical realities that surfaced while translating
 the book's idealized formulas into working code against real data: a
 free data source's blind spot toward anything that did not survive to the
-present, an architectural contract worth preserving even when a textbook
-algorithm's own narration pulls against it, and formulas the book itself
-states with inconsistent notation across chapters. Each of these changed
-the scope of the work in a specific, traceable way. That process is
-reported here as part of the project's contribution, not smoothed over in
-favor of a cleaner-looking final result.
+present (repeated three times now, each a distinct company and failure
+mode: WBA taken private, GM's pre-bankruptcy equity cancelled, Kraft's
+ticker orphaned by a corporate split), an architectural contract worth
+preserving even when a textbook algorithm's own narration pulls against
+it, formulas the book itself states with inconsistent notation across
+chapters, and parameters tuned to reproduce a textbook's own toy example
+that turned out to be actively wrong on real data compared to the values
+the book separately recommends for it. Each of these changed the scope
+of the work in a specific, traceable way. Perhaps the clearest validation
+of the project's overall approach is Section~\ref{sec:results}'s
+financial-crisis results: an independently chosen DJIA window, built
+from scratch rather than reused from the book, reproduces the exact
+ranking among mean-reversion strategies (PAMR and CWMR struggling, OLMAR
+and Anticor faring comparatively better) that the book itself reports
+for this same asset class. That process is reported here as part of the
+project's contribution, not smoothed over in favor of a cleaner-looking
+final result.
 
 \end{document}
