@@ -2,3 +2,9 @@
 __pycache__/
 wealth_curves.png
 CLAUDE.MD
+paper/main.pdf
+paper/main.aux
+paper/main.log
+paper/main.fls
+paper/main.fdb_latexmk
+paper/main.synctex.gz
