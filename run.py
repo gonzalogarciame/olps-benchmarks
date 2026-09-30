@@ -5,31 +5,28 @@ import itertools
 import matplotlib.pyplot as plt
 import pandas as pd
 
+import djia_universe
 from data import get_price_relatives
-from engine import run_backtest
+from engine import run_backtest_segmented
 from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
+from strategies.anticor import Anticor
 from strategies.bah import BAH
 from strategies.best_stock import BestStock
 from strategies.crp import CRP
+from strategies.cwmr import CWMR
 from strategies.eg import EG
+from strategies.olmar import OLMAR
 from strategies.ons import ONS
+from strategies.pamr import PAMR
 from strategies.up import UP
 
-# Dow Jones Industrial Average constituents as of 2023-01-01 -- the index's
-# membership was unchanged from 2020-08-31 until 2024-02-26, so this is the
-# correct point-in-time list, not today's DJIA (using today's list here would
-# be the textbook survivorship-bias mistake this repo is trying to avoid).
-# One of the 30, Walgreens Boots Alliance (WBA), is left out: it was taken
-# private in 2025 and yfinance no longer serves any historical data for it at
-# all, even for 2023 when it was still trading -- a live example of exactly
-# the bias this list is trying to fix, not an oversight. See paper/main.tex.
-TICKERS = [
-    "AAPL", "MSFT", "JPM", "WMT", "V", "JNJ", "CSCO", "CVX", "KO", "CAT",
-    "MRK", "PG", "UNH", "HD", "GS", "IBM", "AXP", "AMGN", "CRM", "DIS",
-    "MCD", "BA", "MMM", "TRV", "HON", "NKE", "VZ", "INTC", "DOW",
-]
-START = "2023-01-01"
-END = "2024-01-01"
+# 2007-06-01 .. 2009-12-31: the financial crisis, chosen so Follow-the-Loser
+# strategies have an actual fluctuating market to exploit (unlike the 2023
+# snapshot's steady bull run, where BAH already wins) and because the Dow's
+# membership genuinely changed mid-window -- see djia_universe.py for the
+# point-in-time constituent tracking this requires.
+START = "2007-06-01"
+END = "2009-12-31"
 PLOT_PATH = "wealth_curves.png"
 
 # distinct dash patterns so nearly-overlapping wealth curves stay
@@ -37,30 +34,45 @@ PLOT_PATH = "wealth_curves.png"
 LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 
 
-def main() -> None:
-    price_relatives_df = get_price_relatives(TICKERS, START, END)
-    price_relatives = price_relatives_df.values
-    n_assets = price_relatives.shape[1]
+def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
+    fetch_symbols = [djia_universe.fetch_symbol(t) for t in tickers]
+    df = get_price_relatives(fetch_symbols, seg_start, seg_end)
+    df = df[fetch_symbols]  # fixed column order, undoing yfinance's alphabetical sort
+    df.columns = tickers  # display names (undoes the UTX->RTX fetch alias)
+    return df
 
-    # wealth has one more point than price_relatives (S_0 = 1 before any
-    # period), so prepend a date for that point too
-    dates = price_relatives_df.index
+
+def main() -> None:
+    segments_meta = djia_universe.segments(START, END)
+    segment_dfs = [_load_segment(s, e, tickers) for s, e, tickers in segments_meta]
+    segment_arrays = [df.values for df in segment_dfs]
+
+    dates = pd.DatetimeIndex([]).append([df.index for df in segment_dfs])
+    # wealth has one more point than the combined periods (S_0 = 1 before
+    # any period), so prepend a date for that point too
     plot_dates = dates.insert(0, dates[0] - pd.Timedelta(days=1))
 
-    strategies = {
-        "BAH": BAH(n_assets),
-        "CRP": CRP(n_assets),
-        "BestStock": BestStock(n_assets, price_relatives),
-        "UP": UP(n_assets),
-        "EG": EG(n_assets),
-        "ONS": ONS(n_assets),
+    strategy_factories = {
+        "BAH": lambda n, pr: BAH(n),
+        "CRP": lambda n, pr: CRP(n),
+        "BestStock": lambda n, pr: BestStock(n, pr),
+        "UP": lambda n, pr: UP(n),
+        "EG": lambda n, pr: EG(n),
+        "ONS": lambda n, pr: ONS(n),
+        "Anticor": lambda n, pr: Anticor(n),
+        "PAMR": lambda n, pr: PAMR(n),
+        "CWMR": lambda n, pr: CWMR(n),
+        "OLMAR": lambda n, pr: OLMAR(n),
     }
 
-    print(f"{len(price_relatives)} periods, {n_assets} assets: {TICKERS}")
+    total_periods = sum(arr.shape[0] for arr in segment_arrays)
+    print(f"{total_periods} periods across {len(segment_arrays)} DJIA reconstitution segments:")
+    for seg_start, seg_end, tickers in segments_meta:
+        print(f"  {seg_start} .. {seg_end}: {len(tickers)} assets")
 
     fig, ax = plt.subplots()
-    for (name, strategy), linestyle in zip(strategies.items(), itertools.cycle(LINESTYLES)):
-        wealth = run_backtest(strategy, price_relatives)
+    for (name, factory), linestyle in zip(strategy_factories.items(), itertools.cycle(LINESTYLES)):
+        wealth = run_backtest_segmented(factory, segment_arrays)
         t_stat, p_value = t_test(wealth)
         print(
             f"{name:10s} final wealth = {wealth[-1]:.4f}  APY = {apy(wealth):+.2%}  "
@@ -76,7 +88,7 @@ def main() -> None:
 
     ax.set_xlabel("date")
     ax.set_ylabel("cumulative wealth")
-    ax.set_title(f"OLPS strategies on DJIA constituents as of {START} (n={n_assets})")
+    ax.set_title(f"OLPS strategies on DJIA constituents, {START} to {END}")
     ax.legend()
     fig.autofmt_xdate()
     fig.savefig(PLOT_PATH)
