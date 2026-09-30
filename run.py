@@ -87,7 +87,8 @@ def main() -> None:
             ax.plot(plot_dates, wealth, label=name, linestyle=linestyle)
 
     ax.set_xlabel("date")
-    ax.set_ylabel("cumulative wealth")
+    ax.set_ylabel("cumulative wealth (log scale)")
+    ax.set_yscale("log")
     ax.set_title(f"OLPS strategies on DJIA constituents, {START} to {END}")
     ax.legend()
     fig.autofmt_xdate()
