@@ -11,17 +11,17 @@ import universes.etf_universe as etf_universe
 from data import get_price_relatives
 from engine import run_backtest_segmented
 from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
-from strategies.anticor import Anticor
-from strategies.bah import BAH
-from strategies.best_stock import BestStock
-from strategies.crp import CRP
-from strategies.cwmr import CWMR
-from strategies.eg import EG
-from strategies.olmar import OLMAR
-from strategies.olmar2 import OLMAR2
-from strategies.ons import ONS
-from strategies.pamr2 import PAMR2
-from strategies.up import UP
+from strategies.benchmarks.bah import BAH
+from strategies.benchmarks.best_stock import BestStock
+from strategies.benchmarks.crp import CRP
+from strategies.follow_the_loser.anticor import Anticor
+from strategies.follow_the_loser.cwmr import CWMR
+from strategies.follow_the_loser.olmar import OLMAR
+from strategies.follow_the_loser.olmar2 import OLMAR2
+from strategies.follow_the_loser.pamr2 import PAMR2
+from strategies.follow_the_winner.eg import EG
+from strategies.follow_the_winner.ons import ONS
+from strategies.follow_the_winner.up import UP
 
 # 2000-06-19 is not an arbitrary choice -- it's IYR's inception, the
 # earliest point at which the ETF universe has 2+ assets (SPY alone
