@@ -18,19 +18,25 @@ in [book/](book/).
 - [strategies/](strategies/) — one file per algorithm, each implementing
   `strategies/base.py`'s `Strategy` interface (Algorithm A.1): stateless,
   `update(history)` is a pure function of the price-relative history up to
-  `t-1` and returns the portfolio `b_t`.
-  - `bah.py` — Buy-and-Hold (Ch. 3.1)
-  - `best_stock.py` — hindsight-only upper bound, not a real strategy (Sec. 3.2)
-  - `crp.py` — Constant Rebalanced Portfolio (Ch. 3.3)
-  - `up.py` — Universal Portfolio (Cover, 1991)
-  - `eg.py` — Exponential Gradient (Helmbold et al., 1998)
-  - `ons.py` — Online Newton Step via FTRL (Ch. 4.4; uses `cvxpy`)
-  - `anticor.py` — Anticorrelation (Borodin, El-Yaniv & Gogan, 2004; Sec. 5.2)
-  - `pamr.py`, `pamr1.py`, `pamr2.py` — Passive Aggressive Mean Reversion
-    and its capped/quadratic-slack variants (Ch. 9)
-  - `olmar.py`, `olmar2.py` — Online Moving Average Reversion, simple and
-    exponential moving-average variants (Ch. 11)
-  - `cwmr.py` — Confidence Weighted Mean Reversion, CWMR-Var (Ch. 10)
+  `t-1` and returns the portfolio `b_t`. Subfolders follow the book's own
+  taxonomy (Part II: Ch. 3 Benchmarks, Ch. 4 Follow the Winner, Ch. 5
+  Follow the Loser); `base.py` and `simplex.py` stay at the top level
+  since every category's strategies depend on one or both of them.
+  - `benchmarks/` — not adaptive, just a baseline to beat
+    - `bah.py` — Buy-and-Hold (Ch. 3.1)
+    - `best_stock.py` — hindsight-only upper bound, not a real strategy (Sec. 3.2)
+    - `crp.py` — Constant Rebalanced Portfolio (Ch. 3.3)
+  - `follow_the_winner/` — shift weight toward recent outperformers
+    - `up.py` — Universal Portfolio (Cover, 1991)
+    - `eg.py` — Exponential Gradient (Helmbold et al., 1998)
+    - `ons.py` — Online Newton Step via FTRL (Ch. 4.4; uses `cvxpy`)
+  - `follow_the_loser/` — bet on mean reversion instead
+    - `anticor.py` — Anticorrelation (Borodin, El-Yaniv & Gogan, 2004; Sec. 5.2)
+    - `pamr.py`, `pamr1.py`, `pamr2.py` — Passive Aggressive Mean Reversion
+      and its capped/quadratic-slack variants (Ch. 9)
+    - `cwmr.py` — Confidence Weighted Mean Reversion, CWMR-Var (Ch. 10)
+    - `olmar.py`, `olmar2.py` — Online Moving Average Reversion, simple and
+      exponential moving-average variants (Ch. 11)
   - `simplex.py` — shared closed-form simplex projection used by
     PAMR/CWMR/OLMAR
 - [universes/](universes/) — point-in-time asset universes, so a backtest
@@ -54,7 +60,7 @@ pip install -r requirements.txt
 
 ```python
 from data import get_price_relatives
-from strategies.crp import CRP
+from strategies.benchmarks.crp import CRP
 
 price_relatives = get_price_relatives(
     tickers=["AAPL", "MSFT"], start="2023-01-01", end="2024-01-01"
