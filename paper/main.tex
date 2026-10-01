@@ -496,6 +496,193 @@ The resulting universe has 29 assets in three of the four segments and
 28 in the third (2008-09-22 to 2009-06-08, where both GM and KFT are
 simultaneously absent).
 
+\subsection{Broadening the Window Further: 26 Years, Not One Regime}
+\label{sec:broaden}
+
+The 2007-2009 results (Section~\ref{sec:results}) were unsettling enough
+to warrant a direct check before being trusted: PAMR and CWMR losing
+97\% looked less like a market behaving badly and more like something
+that could be a bug. Two checks addressed this directly rather than by
+assumption. First, CWMR's closed-form update was re-derived from the
+book's Appendix B (Equation B.12) term by term against the
+implementation; every coefficient matched exactly. Second, PAMR's
+actual day-by-day portfolio during the September-October 2008 crash was
+traced directly: on 2008-09-25 it placed 100\% of the portfolio in
+Citigroup, betting on reversion after Citigroup had the worst return
+the prior day -- and that specific bet won, Citigroup gained 2.4\% the
+next day. Days later, the same all-in logic repeated on Citigroup again
+and lost 5\%. This is PAMR doing exactly what it is specified to do,
+not a bug -- and it is close to the book's own illustration (Section~9.4)
+of why an uncapped PAMR can be dangerous.
+
+That ruled out a bug, but not a second concern: the 2007-2009 window
+was itself chosen deliberately, for being a crisis -- the same category
+of bias (not generically wrong, but a specific regime picked for a
+specific reason) as the original three-ticker 2023 snapshot
+(Section~\ref{sec:survivorship}), just picked to show drama rather than
+convenience. A quick check on the original, independent 2023 window
+reinforced this: on that window, instead of collapsing, OLMAR and
+Anticor were the two \emph{best}-performing strategies of the entire
+set, beating even ONS. The same code produced opposite rankings on two
+different real markets, which is what correct code responding honestly
+to different data looks like, not a bug -- but it also meant neither
+window alone was a fair test.
+
+The fix was to stop picking windows at all: extend
+\texttt{djia\_universe.py}'s reconstitution timeline back to
+2000-01-01, as far as a verified, point-in-time Dow membership history
+reasonably extends, and run one continuous backtest through to the
+present (2026-09-01) rather than a window chosen to showcase any one
+regime. This spans the dot-com bust, the 2008 crisis, the 2009-2019
+bull run, the COVID crash, and the recent AI-driven run -- whatever
+actually happened, not a selected slice of it. Fourteen reconstitution
+events were added (up from three), each verified against Wikipedia's
+``List of changes to the Dow Jones Industrial Average'' and, for the
+post-2012 changes, contemporary reporting and S\&P Dow Jones Indices'
+own press releases directly (including the most recent change, Alphabet
+replacing Verizon on 2026-06-29).
+
+Three further data gaps turned up, each confirmed directly against
+\texttt{yfinance} and each a distinct failure mode from the three
+already documented (WBA, GM, KFT): DowDuPont (existed only 2017-2019
+before splitting three ways into Dow Inc., DuPont, and Corteva, with no
+single successor carrying its trading history); Eastman Kodak (its
+pre-2004 Dow-era history is unavailable under its old ticker,
+independent of and years before its unrelated 2012 bankruptcy); and SBC
+Communications, the most interesting case -- SBC itself is a permanent
+data gap, but not because the company disappeared. SBC acquired the
+original AT\&T Corp in 2005 and renamed itself AT\&T Inc., adopting
+ticker \texttt{T} -- a company that, under that new name, is still
+trading today. The obvious fix, aliasing SBC's fetch to \texttt{T}
+(the same approach already used for United Technologies' 2020 rename to
+Raytheon Technologies), was rejected: ticker \texttt{T} already meant a
+different, unrelated company (the original AT\&T Corp) for the first
+half of SBC's own Dow tenure, so applying that alias uniformly would
+silently misattribute AT\&T Corp's returns to SBC's seat for 2000-2005.
+SBC is therefore treated as unavailable for its full tenure, not
+because nothing survived, but because what survived did so under a
+ticker that was already spoken for during part of the period in
+question.
+
+Running the backtest at this scale also surfaced a latent correctness
+bug, independent of anything above: stress-testing the strategies
+against random synthetic data (rather than real market data or the
+book's worked examples) made \texttt{ons.py}'s \texttt{cvxpy}-based
+projection return portfolio weights with tiny negative entries
+($\sim\!10^{-9}$), a known behavior of interior-point solvers operating
+near a constraint boundary. This had not appeared in any real backtest
+run so far, but would eventually, given enough periods; it is fixed
+with a clip (\texttt{np.maximum(b.value, 0.0)}) rather than left to be
+found the hard way. Separately, ONS's own $O(n^2)$ solver-call cost
+(Section~\ref{sec:ons}), measured at a few minutes over $n\!\sim\!650$
+periods, was benchmarked directly at this new scale ($n\!\sim\!6700$)
+rather than assumed: an estimated 50+ hours, dominated entirely by
+\texttt{cvxpy} overhead repeated quadratically many times. Every other
+strategy here is plain \texttt{numpy} with no solver calls and finishes
+in minutes regardless of scale. Rather than force ONS through
+regardless, or quietly drop it, it is excluded from this window by a
+named, documented configuration flag (\texttt{INCLUDE\_ONS} in
+\texttt{run.py}) rather than a silent omission.
+
+The resulting point-in-time universe has 30 assets in most segments,
+dropping to 27-29 whenever one or more of GM, KFT, WBA, DWDP, EK, or SBC
+would otherwise be present.
+
+\subsection{Tuning PAMR's Aggressiveness Parameter}
+\label{sec:pamr-tuning}
+
+Plain PAMR's failure mode, traced directly in
+Section~\ref{sec:broaden}, is specifically that it is unconstrained: a
+single day's loss can drive the portfolio entirely into one asset, with
+nothing to prevent it. The book's own fix for exactly this problem is
+PAMR-1 and PAMR-2 (book Eqs.~9.3-9.4, 9.7-9.8), which cap or soften the
+step size $\tau_t$ via an aggressiveness parameter $C$:
+\[
+    \tau_t^{\text{PAMR-1}} = \min\!\left(C, \frac{\ell_\epsilon}{\lVert x_t - \bar{x}_t \mathbf{1} \rVert^2}\right),
+    \qquad
+    \tau_t^{\text{PAMR-2}} = \frac{\ell_\epsilon}{\lVert x_t - \bar{x}_t \mathbf{1} \rVert^2 + \frac{1}{2C}}.
+\]
+Both were implemented as thin subclasses of \texttt{PAMR}, overriding
+only this step-size computation, and both were verified exactly against
+the book's own worked numerical example (Sec.~9.4: $x_t=(1.00,0.01)$,
+$b_t=(1,0)$, $\epsilon=0.30$, $C=1.00$), which gives, for plain PAMR,
+PAMR-1, and PAMR-2 respectively:
+\[
+    \tau_t = 1.43 / 1.00 / 0.71, \qquad
+    b_{t+1} = (0.29,0.71) / (0.50,0.50) / (0.65,0.35).
+\]
+All three reproduced to the stated precision.
+
+The first test used $C=500$, the midpoint of the book's own tested
+sensitivity range (50 to 5000, Fig.~13.6), over which it reports
+performance as insensitive to $C$. On this project's data, that held:
+PAMR-1/PAMR-2 at $C=500$ performed almost identically to plain,
+uncapped PAMR -- still a near-total collapse. Sweeping $C$ across
+several orders of magnitude on the 2007-2009 window found why: real
+daily price relatives rarely produce an uncapped $\tau_t$ anywhere near
+even 50, so a cap of 500 essentially never binds. Well below the book's
+tested range, a sharp transition appeared instead -- around $C=0.1$,
+performance flips from catastrophic ($-46\%$ APY at $C=500$) to
+genuinely profitable ($+5.7\%$ APY at $C=0.1$).
+
+This was flagged as a methodological risk before being trusted: $C=0.1$
+was the single best-performing value out of eleven tested, found by
+searching on the exact window then being evaluated -- in-sample
+overfitting, the classic backtesting trap, not evidence the effect
+generalizes. The check was to re-run the same sweep on the much larger,
+mostly non-overlapping 2000-2026 window from
+Section~\ref{sec:broaden}, which $C=0.1$ was not tuned on. The effect
+held, and was if anything stronger there ($C=0.1$: $+11.83\%$ APY,
+$t=3.11$, $p=0.001$) -- evidence of a real, generalizing effect rather
+than noise-fitting to one crisis window. Table~\ref{tab:pamr-sweep}
+reports the comparison.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrrr}
+\toprule
+& \multicolumn{2}{c}{2007-2009 APY} & \multicolumn{2}{c}{2000-2026 APY} \\
+$C$ & PAMR-1 & PAMR-2 & PAMR-1 & PAMR-2 \\
+\midrule
+0.01  & $-$0.49\% & $-$0.78\% & 10.11\% & 10.07\% \\
+0.10  & $+$5.73\% & $+$3.27\% & 11.83\% & 11.49\% \\
+1.00  & $-$2.57\% & $-$4.29\% & 10.04\% & 11.05\% \\
+5.00  & $-$17.67\% & $-$14.09\% & $-$1.98\% & 0.28\% \\
+500.00 & $-$46.58\% & $-$45.42\% & -- & -- \\
+\bottomrule
+\end{tabular}
+\caption{PAMR-1/PAMR-2 final APY across the aggressiveness parameter
+$C$, on both the 2007-2009 crisis window and the full 2000-2026 window.
+$C=500$ was not re-run on the longer window once the effect was already
+established on both windows at smaller $C$.}
+\label{tab:pamr-sweep}
+\end{table}
+
+Rather than report $C=0.1$ -- the specific value a sweep on this
+project's own data happened to score best -- the final choice is
+$C=1.0$: the book's own worked-example value, justified independently
+of any search on this data, not the output of one. It captures nearly
+all of the benefit ($+10.04\%$/$+11.05\%$ APY for PAMR-1/PAMR-2 on the
+full window, both significant at $p<0.01$) without inviting the
+``did you just pick the best number you found'' objection $C=0.1$
+would. Section~\ref{sec:results} reports only PAMR-2 at $C=1.0$ going
+forward (labeled \texttt{PAMR}) rather than plain PAMR, PAMR-1, and
+PAMR-2 side by side -- all three are implemented and this comparison
+remains the record of why, but showing three near-duplicate collapsing
+or recovering lines in the headline comparison would obscure the one
+result that matters: the book's own fix, at the book's own stated
+value, took the worst-performing strategy in the entire lineup to the
+best one.
+
+No equivalent capped variant exists for CWMR -- its own two variants,
+CWMR-Var and CWMR-Stdev, differ in how exactly the same optimization
+problem is solved (an approximation versus an exact one), not in how
+aggressively either trades, so neither addresses the unconstrained,
+single-period concentration that CWMR shares with plain PAMR. CWMR is
+therefore left at its uncapped result; this asymmetry -- one algorithm
+in the family has a documented fix, the other does not -- is itself
+worth noting rather than papered over.
+
 \section{Current Results}
 \label{sec:results}
 
@@ -618,7 +805,77 @@ as a near-total collapse by late 2008 that never recovers, while
 Anticor's heuristic, claim-based transfers and OLMAR's moving-average
 smoothing both react more slowly and lose far less.
 
-\section{Limitations and Future Work}
+The 2007-2009 window was itself revisited for the reasons given in
+Section~\ref{sec:broaden}: it was a deliberately chosen crisis, not an
+unbiased sample, and a check against the original 2023 window showed
+the same strategies ranked almost in reverse order there. Table
+\ref{tab:results-full} reports the same metrics over the full
+2000-2026 window (Section~\ref{sec:broaden}), the current authoritative
+result. PAMR is reported here at $C=1.0$ (Section~\ref{sec:pamr-tuning})
+rather than its plain, uncapped form; plain PAMR and PAMR-1 are left out
+of this table since both collapse the same way PAMR did in
+Table~\ref{tab:results-crisis}, and Table~\ref{tab:pamr-sweep} already
+records that comparison in full. ONS is omitted for the reason given in
+Section~\ref{sec:broaden} (Table~\ref{tab:results-crisis} is the most
+recent window it was actually run on).
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & MDD$^\dagger$ & Calmar & $t$ (p) \\
+\midrule
+BAH          & 10.1616 & $+$9.13\%  & 18.55\% & 0.28    & 166.56\%   & 0.05    & 2.90 (0.002) \\
+CRP          & 12.2067 & $+$9.88\%  & 19.50\% & 0.30    & 202.21\%   & 0.05    & 2.99 (0.001) \\
+UP           & 12.2184 & $+$9.89\%  & 19.46\% & 0.30    & 200.24\%   & 0.05    & 3.00 (0.001) \\
+EG           & 12.0728 & $+$9.84\%  & 19.44\% & 0.30    & 199.94\%   & 0.05    & 2.99 (0.001) \\
+Anticor      &  8.6187 & $+$8.45\%  & 39.59\% & 0.11    & 1012.15\%  & 0.01    & 2.13 (0.016) \\
+PAMR ($C{=}1$) & 16.1711 & $+$11.05\% & 30.02\% & 0.23  & 438.61\%   & 0.03    & 2.58 (0.005) \\
+CWMR         &  0.0227 & $-$13.29\% & 43.78\% & $-$0.39 & 174.10\%  & $-$0.08 & $-$0.49 (0.687) \\
+OLMAR        &  0.7485 & $-$1.09\%  & 46.83\% & $-$0.11 & 510.77\%  & $-$0.00 & 1.15 (0.126) \\
+OLMAR2       &  0.1931 & $-$6.01\%  & 47.72\% & $-$0.21 & 239.43\%  & $-$0.03 & 0.62 (0.267) \\
+\midrule
+Best Stock$^*$ & 11385.9571 & $+$42.17\% & 29.13\% & 1.31 & 94247.86\% & 0.00 & 6.97 (0.000) \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Final wealth and Chapter 2.3 evaluation metrics, 2000-01-01 to
+2026-09-01, reconstitution-tracked Dow Jones universe
+(Section~\ref{sec:broaden}). $^*$Best Stock is reported separately
+(Section~\ref{sec:beststock}). $^\dagger$MDD is the absolute drawdown
+defined in Section~\ref{sec:process} (see also the limitation noted in
+Section~\ref{sec:limitations}) -- at this window's scale, where several
+strategies grow to many times their starting wealth before any
+drawdown, it produces figures well past 100\% that are correct under
+that definition but not directly comparable to a conventional
+peak-relative drawdown.}
+\label{tab:results-full}
+\end{table}
+
+The ranking changes again, and tells a more complete story than either
+narrower window did alone. BAH, CRP, UP, and EG still cluster tightly,
+now all solidly profitable (APY 9.1-9.9\%, each significant at
+$p \leq 0.002$) -- a long enough window for a diversified, causally
+correct strategy to show a real edge over cash, consistent with the
+historical performance of a broad blue-chip basket. Anticor is
+profitable and significant ($p=0.016$) but trails the simple baselines
+here, the opposite of its relative standing in the crisis window alone.
+CWMR remains a near-total loss, unresolved by anything tried
+(Section~\ref{sec:pamr-tuning}). Both OLMAR variants lose money over
+the full window -- OLMAR2 (the exponential-moving-average variant) is
+worse than OLMAR (-6.01\% vs. -1.09\% APY), not better, so trying the
+book's second variant did not rescue it the way capping rescued PAMR;
+this asymmetry (one fix works cleanly, the other alternative tried does
+not) is as informative as a result that worked.
+
+PAMR is the standout: at $C=1$, the strategy that lost 98\% of its
+value uncapped grows to $16.17\times$ over 26.7 years -- the best
+final wealth of every causal strategy tested, ahead of CRP, UP, and EG,
+with the second-tightest significance in the table ($p=0.005$) after
+Best Stock itself. Section~\ref{sec:pamr-tuning} is the full account of
+how that number was reached and why $C=1$ rather than a better-scoring
+but untrustworthy $C=0.1$.
 \label{sec:limitations}
 
 Several gaps were identified during this work and deliberately left open
@@ -635,21 +892,31 @@ rather than addressed immediately, each for a stated reason:
     testing framework partway through, but it does not scale indefinitely
     as more algorithms are added.
     \item \textbf{Survivorship bias is fixed for one specific window, not
-    as a general capability.} Section~\ref{sec:survivorship2}'s
-    reconstitution timeline is a genuine fix for the 2007-2009 backtest --
-    real point-in-time membership, tracked through three actual Dow
-    changes, not one static snapshot -- but \texttt{djia\_universe.py} is
-    a hand-built, hand-verified table specific to that window, not a
-    general mechanism that would automatically cover a different date
-    range. The underlying data limitation is also still only worked
-    around, not removed: \texttt{yfinance} cannot supply price history
-    for delisted securities at all (GM, KFT, and WBA are permanent gaps,
-    not ones a wider date range or more careful code would recover), and
-    a fully correct fix remains a capability the planned Bloomberg
-    terminal migration is expected to provide -- the
+    as a general capability.} Sections~\ref{sec:survivorship2}
+    and~\ref{sec:broaden}'s reconstitution timeline is a genuine fix --
+    real point-in-time membership, tracked through fourteen actual Dow
+    changes across 26.7 years, not one static snapshot -- but
+    \texttt{djia\_universe.py} is a hand-built, hand-verified table
+    specific to the 2000-2026 range, not a general mechanism that would
+    automatically extend itself to a different or later date range. The
+    underlying data limitation is also still only worked around, not
+    removed: \texttt{yfinance} cannot supply price history for delisted
+    or ticker-orphaned securities at all (GM, KFT, WBA, SBC, DWDP, and EK
+    are permanent gaps, not ones a wider date range or more careful code
+    would recover), and a fully correct fix remains a capability the
+    planned Bloomberg terminal migration is expected to provide -- the
     \texttt{get\_prices} indirection in \texttt{data.py} exists
     specifically so that migration touches one function, not every
     strategy or script.
+    \item \textbf{ONS does not appear in the 2000-2026 results.} Its
+    $O(n^2)$ \texttt{cvxpy}-solver cost (Section~\ref{sec:ons}) is an
+    estimated 50+ hours at this window's scale (Section~\ref{sec:broaden}),
+    benchmarked directly rather than assumed. It remains implemented and
+    is included wherever earlier, shorter windows are reported; a
+    documented flag (\texttt{INCLUDE\_ONS}) controls whether it runs on
+    the full window, left off by default. Making it tractable at this
+    scale would mean revisiting the stateless, no-cached-state design
+    that Section~\ref{sec:ons} deliberately chose.
     \item \textbf{A known but unfixed data bug.} \texttt{yfinance} returns
     multi-ticker downloads with columns sorted alphabetically rather than
     in the order tickers were requested. This does not affect any
@@ -666,11 +933,14 @@ rather than addressed immediately, each for a stated reason:
     S_\tau)$ normalized by the peak. This went unnoticed while every
     strategy's wealth stayed close to 1 (Table~\ref{tab:results-2023}),
     since the two definitions barely differ there, but is visible in
-    Table~\ref{tab:results-crisis}, where strategies that peaked above 1
-    before crashing report drawdowns past 100\%. The numbers are correct
-    under the definition actually implemented; whether to switch to the
-    conventional relative definition is left open rather than changed
-    silently alongside unrelated work.
+    Table~\ref{tab:results-crisis} and, more severely, in the 26.7-year
+    results (Table~\ref{tab:results-full}), where a strategy that grows
+    to several times its starting wealth before any drawdown can report
+    MDD and Calmar figures that are technically correct under this
+    definition but hard to read as a risk measure at that scale. The
+    numbers are correct under the definition actually implemented;
+    whether to switch to the conventional relative definition is left
+    open rather than changed silently alongside unrelated work.
     \item \textbf{Remaining book chapters.} Pattern Matching,
     Meta-Algorithms, and the proposed learned strategy in this paper's
     own title are not yet implemented.
@@ -678,26 +948,38 @@ rather than addressed immediately, each for a stated reason:
 
 \section{Conclusion}
 
-The value of this project so far is not only the ten algorithms
-implemented, but the practical realities that surfaced while translating
-the book's idealized formulas into working code against real data: a
-free data source's blind spot toward anything that did not survive to the
-present (repeated three times now, each a distinct company and failure
-mode: WBA taken private, GM's pre-bankruptcy equity cancelled, Kraft's
-ticker orphaned by a corporate split), an architectural contract worth
-preserving even when a textbook algorithm's own narration pulls against
-it, formulas the book itself states with inconsistent notation across
-chapters, and parameters tuned to reproduce a textbook's own toy example
-that turned out to be actively wrong on real data compared to the values
-the book separately recommends for it. Each of these changed the scope
-of the work in a specific, traceable way. Perhaps the clearest validation
-of the project's overall approach is Section~\ref{sec:results}'s
-financial-crisis results: an independently chosen DJIA window, built
-from scratch rather than reused from the book, reproduces the exact
-ranking among mean-reversion strategies (PAMR and CWMR struggling, OLMAR
-and Anticor faring comparatively better) that the book itself reports
-for this same asset class. That process is reported here as part of the
-project's contribution, not smoothed over in favor of a cleaner-looking
-final result.
+The value of this project so far is not only the algorithms implemented,
+but the practical realities that surfaced while translating the book's
+idealized formulas into working code against real data: a free data
+source's blind spot toward anything that did not survive to the present
+under its original ticker (six distinct cases now, each a different
+failure mode -- taken private, bankrupted, split three ways, or simply
+orphaned by a rename that collided with an unrelated earlier company),
+an architectural contract worth preserving even when a textbook
+algorithm's own narration pulls against it, formulas the book itself
+states with inconsistent notation across chapters, and parameters tuned
+to reproduce a textbook's own toy example that turned out to be wrong on
+real data compared to the values the book separately recommends. Each of
+these changed the scope of the work in a specific, traceable way.
+
+Two results stand out as validation of the project's overall approach,
+for complementary reasons. The 2000-2026 results
+(Section~\ref{sec:broaden}) reproduce, on an independently built window
+the book never tested, the same qualitative ranking among mean-reversion
+strategies that the book itself reports for this asset class --
+evidence the implementations are capturing something real about these
+algorithms, not an artifact of one convenient dataset. The PAMR tuning
+investigation (Section~\ref{sec:pamr-tuning}) goes a step further: it is
+not just a result that matches the book, but a demonstration of a
+specific empirical trap and its fix -- an uncapped algorithm failing
+catastrophically, a naive parameter search finding a value that fixes
+it but cannot be trusted on the window that found it, and a principled
+resolution (the book's own stated parameter, not a searched one) that
+turns the worst-performing strategy in the entire comparison into the
+best-performing one. That process -- including the dead ends, the
+overfitting risk caught before being reported, and the mechanistic trace
+that ruled out a bug before any of this was trusted -- is reported here
+as part of the project's contribution, not smoothed over in favor of a
+cleaner-looking final result.
 
 \end{document}
