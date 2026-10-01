@@ -27,6 +27,13 @@ class PAMR(Strategy):
             x_bar = x_t.mean()
             loss = max(0.0, b @ x_t - self._eps)
             denom = np.sum((x_t - x_bar) ** 2)
-            tau = loss / denom if denom > 0 else 0.0
+            tau = self._tau(loss, denom)
             b = project_to_simplex(b - tau * (x_t - x_bar))
         return b
+
+    # overridden by PAMR1/PAMR2 (strategies/pamr1.py, pamr2.py), which cap
+    # tau to trade some of this aggressiveness for noise-robustness --
+    # same loss/update/projection otherwise, book Algorithm 9.1 presents
+    # all three as one algorithm differing only in this step.
+    def _tau(self, loss: float, denom: float) -> float:
+        return loss / denom if denom > 0 else 0.0
