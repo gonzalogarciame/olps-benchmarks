@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,17 +17,29 @@ from strategies.crp import CRP
 from strategies.cwmr import CWMR
 from strategies.eg import EG
 from strategies.olmar import OLMAR
+from strategies.olmar2 import OLMAR2
 from strategies.ons import ONS
-from strategies.pamr import PAMR
+from strategies.pamr2 import PAMR2
 from strategies.up import UP
 
-# 2007-06-01 .. 2009-12-31: the financial crisis, chosen so Follow-the-Loser
-# strategies have an actual fluctuating market to exploit (unlike the 2023
-# snapshot's steady bull run, where BAH already wins) and because the Dow's
-# membership genuinely changed mid-window -- see djia_universe.py for the
-# point-in-time constituent tracking this requires.
-START = "2007-06-01"
-END = "2009-12-31"
+# 2000-01-01 .. 2026-09-01: as broad a window as djia_universe's verified
+# reconstitution history covers, chosen so the result isn't a single
+# deliberately-picked regime (a bull year, a crisis) but whatever actually
+# happened across the dot-com bust, 2008, the 2009-2019 bull run, COVID,
+# and the recent AI-driven run, with the Dow's real membership changes
+# tracked throughout -- see djia_universe.py.
+START = "2000-01-01"
+END = "2026-09-01"
+
+# ONS replays its full history on every call and solves a cvxpy QP at each
+# step of that replay (Section ons.py / paper, Sec. 4.4-ish) -- O(n^2)
+# solver calls over a backtest of n periods. That cost a few minutes at
+# n~650 (the 2007-2009 window); at n~6700 (this window) it's an estimated
+# 50+ hours, benchmarked directly rather than guessed. Every other
+# strategy here is plain numpy and finishes in minutes regardless. Off by
+# default for that reason; flip to True to include it anyway.
+INCLUDE_ONS = False
+
 PLOT_PATH = "wealth_curves.png"
 GROUPED_PLOT_PATH = "wealth_curves_grouped.png"
 GRID_PLOT_PATH = "wealth_curves_grid.png"
@@ -40,7 +53,7 @@ LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 # short-horizon bets that paid off badly in this crash -- the two groups
 # need different axes to both be readable (see paper, Current Results).
 STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR", "CWMR", "OLMAR"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR", "OLMAR2"]
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -67,12 +80,18 @@ def main() -> None:
         "BestStock": lambda n, pr: BestStock(n, pr),
         "UP": lambda n, pr: UP(n),
         "EG": lambda n, pr: EG(n),
-        "ONS": lambda n, pr: ONS(n),
         "Anticor": lambda n, pr: Anticor(n),
-        "PAMR": lambda n, pr: PAMR(n),
+        # plain PAMR and PAMR-1 are left out of this headline run -- both
+        # collapse the same way (Sec. ftl-pamr-tuning in the paper has the
+        # full comparison); PAMR2 (C=1.0, the book's own worked-example
+        # value) is the one that actually works, so it's what's shown here.
+        "PAMR2": lambda n, pr: PAMR2(n),
         "CWMR": lambda n, pr: CWMR(n),
         "OLMAR": lambda n, pr: OLMAR(n),
+        "OLMAR2": lambda n, pr: OLMAR2(n),
     }
+    if INCLUDE_ONS:
+        strategy_factories["ONS"] = lambda n, pr: ONS(n)
 
     total_periods = sum(arr.shape[0] for arr in segment_arrays)
     print(f"{total_periods} periods across {len(segment_arrays)} DJIA reconstitution segments:")
@@ -118,13 +137,15 @@ def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
     fig, (ax_steady, ax_aggressive) = plt.subplots(2, 1, figsize=(6.4, 7.2), sharex=True)
 
-    for name, linestyle in zip(STEADY_GROUP, itertools.cycle(LINESTYLES)):
+    steady = [name for name in STEADY_GROUP if name in wealths]
+    for name, linestyle in zip(steady, itertools.cycle(LINESTYLES)):
         ax_steady.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
     ax_steady.set_ylabel("cumulative wealth")
     ax_steady.set_title("Steady: no concentrated single-period bets")
     ax_steady.legend()
 
-    for name, linestyle in zip(AGGRESSIVE_GROUP, itertools.cycle(LINESTYLES)):
+    aggressive = [name for name in AGGRESSIVE_GROUP if name in wealths]
+    for name, linestyle in zip(aggressive, itertools.cycle(LINESTYLES)):
         ax_aggressive.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
     ax_aggressive.set_ylabel("cumulative wealth (log scale)")
     ax_aggressive.set_yscale("log")
@@ -141,13 +162,18 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
 def _plot_grid(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
     names = [name for name in wealths if name != "BestStock"]
-    fig, axes = plt.subplots(3, 3, figsize=(11, 9), sharex=True, sharey=True)
-    for ax, name in zip(axes.flat, names):
+    n_cols = math.ceil(math.sqrt(len(names)))
+    n_rows = math.ceil(len(names) / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(11, 3.2 * n_rows), sharex=True, sharey=True)
+    axes_flat = axes.flat if hasattr(axes, "flat") else [axes]
+    for ax, name in zip(axes_flat, names):
         ax.plot(plot_dates, wealths[name])
         ax.axhline(1.0, color="gray", linewidth=0.5, linestyle=":")
         ax.set_yscale("log")
         ax.set_title(name)
         ax.tick_params(axis="x", labelrotation=45)
+    for ax in list(axes_flat)[len(names):]:
+        ax.set_visible(False)
 
     fig.supxlabel("date")
     fig.supylabel("cumulative wealth (log scale)")
