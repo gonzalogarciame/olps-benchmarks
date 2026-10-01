@@ -1,8 +1,6 @@
 .venv
 __pycache__/
-wealth_curves.png
-wealth_curves_grouped.png
-wealth_curves_grid.png
+outputs/
 CLAUDE.MD
 paper/main.pdf
 paper/main.aux
