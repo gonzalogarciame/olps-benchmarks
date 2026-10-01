@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from strategies.pamr import PAMR
+from strategies.follow_the_loser.pamr import PAMR
 
 
 class PAMR2(PAMR):

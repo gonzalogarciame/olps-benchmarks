@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from strategies.bah import BAH
+from strategies.benchmarks.bah import BAH
 
 
 class BestStock(BAH):
