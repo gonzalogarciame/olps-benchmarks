@@ -2,18 +2,45 @@
 
 Online Portfolio Selection (OLPS) algorithms and benchmarks, implemented
 following *Online Portfolio Selection: Principles and Algorithms* (Li & Hoi).
+Written up as a TFG in [paper/main.tex](paper/main.tex); the book itself is
+in [book/](book/).
 
 ## Structure
 
-- `data.py` — downloads adjusted close prices (via `yfinance`) and converts
-  them into price relatives `x[t,i] = price[t,i] / price[t-1,i]`.
-- `strategies/base.py` — `Strategy`, the abstract base class all algorithms
-  implement (Algorithm A.1). Strategies are stateless: `update(history)`
-  is a pure function of the price-relative history up to `t-1` and returns
-  the portfolio `b_t`.
-- `strategies/bah.py` — Buy-and-Hold (Chapter 3.1): invests once at `t=1`
-  and never rebalances, so its weights drift with relative asset
-  performance.
+- [data.py](data.py) — downloads adjusted close prices (via `yfinance`) and
+  converts them into price relatives `x[t,i] = price[t,i] / price[t-1,i]`.
+- [engine.py](engine.py) — runs a strategy over a price-relative history
+  (`run_backtest`) and tracks cumulative wealth `S_t`; `run_backtest_segmented`
+  chains backtests across a universe that changes composition over time
+  (e.g. index reconstitution), resetting strategy state at each boundary.
+- [metrics.py](metrics.py) — APY, volatility, Sharpe, max drawdown, Calmar,
+  and a t-test against the null that the strategy isn't profitable.
+- [strategies/](strategies/) — one file per algorithm, each implementing
+  `strategies/base.py`'s `Strategy` interface (Algorithm A.1): stateless,
+  `update(history)` is a pure function of the price-relative history up to
+  `t-1` and returns the portfolio `b_t`.
+  - `bah.py` — Buy-and-Hold (Ch. 3.1)
+  - `best_stock.py` — hindsight-only upper bound, not a real strategy (Sec. 3.2)
+  - `crp.py` — Constant Rebalanced Portfolio (Ch. 3.3)
+  - `up.py` — Universal Portfolio (Cover, 1991)
+  - `eg.py` — Exponential Gradient (Helmbold et al., 1998)
+  - `ons.py` — Online Newton Step via FTRL (Ch. 4.4; uses `cvxpy`)
+  - `anticor.py` — Anticorrelation (Borodin, El-Yaniv & Gogan, 2004; Sec. 5.2)
+  - `pamr.py`, `pamr1.py`, `pamr2.py` — Passive Aggressive Mean Reversion
+    and its capped/quadratic-slack variants (Ch. 9)
+  - `olmar.py`, `olmar2.py` — Online Moving Average Reversion, simple and
+    exponential moving-average variants (Ch. 11)
+  - `cwmr.py` — Confidence Weighted Mean Reversion, CWMR-Var (Ch. 10)
+  - `simplex.py` — shared closed-form simplex projection used by
+    PAMR/CWMR/OLMAR
+- [universes/](universes/) — point-in-time asset universes, so a backtest
+  tracks real membership changes instead of assuming today's constituents
+  always existed.
+  - `djia_universe.py` — DJIA constituents from 2000-01-01 onward, with
+    every reconstitution since then and the data-availability gaps that
+    cause (documented per-ticker, with the reasoning for each).
+- [run.py](run.py) — the main entry point: runs every strategy over the
+  DJIA universe end to end and writes wealth-curve plots to `outputs/`.
 
 ## Setup
 
@@ -27,17 +54,33 @@ pip install -r requirements.txt
 
 ```python
 from data import get_price_relatives
-from strategies.bah import BAH
+from strategies.crp import CRP
 
 price_relatives = get_price_relatives(
     tickers=["AAPL", "MSFT"], start="2023-01-01", end="2024-01-01"
 )
 
-strategy = BAH(n_assets=price_relatives.shape[1])
+strategy = CRP(n_assets=price_relatives.shape[1])
 b_t = strategy.get_portfolio(price_relatives.values[:10])
 ```
 
+## Running the benchmark
+
+```bash
+python run.py
+```
+
+Backtests every strategy over DJIA constituents from 2000-01-01 to
+2026-09-01, printing final wealth/APY/Sharpe/MDD/Calmar/t-test per strategy
+and saving wealth-curve plots to `outputs/` (gitignored, regenerated on
+each run). `ONS` is off by default — it replays its full history and solves
+a QP at every step, which is minutes at ~650 periods but tens of hours at
+~6700; flip `INCLUDE_ONS` in `run.py` to include it anyway.
+
 ## Status
 
-Early stage — data pipeline and BAH strategy in place. More OLPS algorithms
-(CRP, UP, EG, ONS, ...) to follow.
+All of the book's core strategies are implemented and benchmarked on the
+DJIA universe above, with results and methodology written up in
+`paper/main.tex`. Next up: a second, cross-asset-class universe (see
+`universes/`) to check whether results hold outside a basket of correlated
+US large caps.

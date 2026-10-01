@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import itertools
 import math
+import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import djia_universe
+import universes.djia_universe as djia_universe
 from data import get_price_relatives
 from engine import run_backtest_segmented
 from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
@@ -27,7 +28,7 @@ from strategies.up import UP
 # deliberately-picked regime (a bull year, a crisis) but whatever actually
 # happened across the dot-com bust, 2008, the 2009-2019 bull run, COVID,
 # and the recent AI-driven run, with the Dow's real membership changes
-# tracked throughout -- see djia_universe.py.
+# tracked throughout -- see universes/djia_universe.py.
 START = "2000-01-01"
 END = "2026-09-01"
 
@@ -40,9 +41,10 @@ END = "2026-09-01"
 # default for that reason; flip to True to include it anyway.
 INCLUDE_ONS = False
 
-PLOT_PATH = "wealth_curves.png"
-GROUPED_PLOT_PATH = "wealth_curves_grouped.png"
-GRID_PLOT_PATH = "wealth_curves_grid.png"
+OUTPUT_DIR = "outputs"
+PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves.png"
+GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves_grouped.png"
+GRID_PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves_grid.png"
 
 # distinct dash patterns so nearly-overlapping wealth curves stay
 # distinguishable even where color alone would not separate them
@@ -65,6 +67,7 @@ def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFr
 
 
 def main() -> None:
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     segments_meta = djia_universe.segments(START, END)
     segment_dfs = [_load_segment(s, e, tickers) for s, e, tickers in segments_meta]
     segment_arrays = [df.values for df in segment_dfs]

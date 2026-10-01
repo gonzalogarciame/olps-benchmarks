@@ -454,7 +454,7 @@ restructuring.''
 
 Tracking this properly needed two things Section~\ref{sec:survivorship}
 did not: a membership \emph{timeline} rather than one snapshot
-(\texttt{djia\_universe.py}, a literal table of the three reconstitution
+(\texttt{universes/djia\_universe.py}, a literal table of the three reconstitution
 dates above), and a way to run a backtest whose asset universe changes
 mid-window. The existing \texttt{Strategy} interface already resets
 \texttt{history} to empty at the start of any single \texttt{update()}
@@ -489,7 +489,7 @@ merged into Raytheon Technologies in 2020, and its continuous price
 history (including the 2007-2009 period) is simply filed under the new
 ticker, \texttt{RTX}. Fetching it under its current symbol while
 displaying it as \texttt{UTX} is a rename, not a survivorship gap, and
-the two were kept explicitly distinct in \texttt{djia\_universe.py}
+the two were kept explicitly distinct in \texttt{universes/djia\_universe.py}
 rather than folded into the same exclusion list.
 
 The resulting universe has 29 assets in three of the four segments and
@@ -529,7 +529,7 @@ to different data looks like, not a bug -- but it also meant neither
 window alone was a fair test.
 
 The fix was to stop picking windows at all: extend
-\texttt{djia\_universe.py}'s reconstitution timeline back to
+\texttt{universes/djia\_universe.py}'s reconstitution timeline back to
 2000-01-01, as far as a verified, point-in-time Dow membership history
 reasonably extends, and run one continuous backtest through to the
 present (2026-09-01) rather than a window chosen to showcase any one
@@ -896,7 +896,7 @@ rather than addressed immediately, each for a stated reason:
     and~\ref{sec:broaden}'s reconstitution timeline is a genuine fix --
     real point-in-time membership, tracked through fourteen actual Dow
     changes across 26.7 years, not one static snapshot -- but
-    \texttt{djia\_universe.py} is a hand-built, hand-verified table
+    \texttt{universes/djia\_universe.py} is a hand-built, hand-verified table
     specific to the 2000-2026 range, not a general mechanism that would
     automatically extend itself to a different or later date range. The
     underlying data limitation is also still only worked around, not
