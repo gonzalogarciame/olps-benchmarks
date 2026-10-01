@@ -45,8 +45,17 @@ in [book/](book/).
   - `djia_universe.py` — DJIA constituents from 2000-01-01 onward, with
     every reconstitution since then and the data-availability gaps that
     cause (documented per-ticker, with the reasoning for each).
-- [run.py](run.py) — the main entry point: runs every strategy over the
-  DJIA universe end to end and writes wealth-curve plots to `outputs/`.
+  - `etf_universe.py` — one large, continuously-traded ETF per major
+    asset class (US equities, developed ex-US equities, EM equities,
+    REITs, long Treasuries, gold, broad commodities), so strategies trade
+    genuinely different risk factors instead of 28-30 variations on the
+    same US-equity beta. The universe grows as each ETF's inception date
+    is reached rather than being fixed to today's survivors.
+- [run.py](run.py) — runs every strategy over the DJIA universe end to end
+  and writes wealth-curve plots to `outputs/`.
+- [run_etf.py](run_etf.py) — the same backtest/plotting pipeline over the
+  ETF universe instead, for comparing results across two largely
+  uncorrelated asset sets.
 
 ## Setup
 
@@ -86,7 +95,7 @@ a QP at every step, which is minutes at ~650 periods but tens of hours at
 ## Status
 
 All of the book's core strategies are implemented and benchmarked on the
-DJIA universe above, with results and methodology written up in
-`paper/main.tex`. Next up: a second, cross-asset-class universe (see
-`universes/`) to check whether results hold outside a basket of correlated
-US large caps.
+DJIA universe, with results and methodology written up in `paper/main.tex`.
+The `etf-universe` branch adds a second, cross-asset-class universe (see
+`universes/etf_universe.py` and `run_etf.py`) to check whether results hold
+outside a basket of correlated US large caps.
