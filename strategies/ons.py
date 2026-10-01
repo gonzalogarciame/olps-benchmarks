@@ -35,4 +35,8 @@ class ONS(Strategy):
         objective = cp.Minimize(cp.quad_form(b - y, a))
         constraints = [b >= 0, cp.sum(b) == 1]
         cp.Problem(objective, constraints).solve()
-        return b.value
+        # interior-point solvers routinely return tiny negative noise
+        # (~1e-9 to 1e-20) on entries the constraint should hold at exactly
+        # zero; harmless numerically, but strict enough to fail
+        # Strategy._validate's -1e-9 tolerance on long/noisy backtests
+        return np.maximum(b.value, 0.0)
