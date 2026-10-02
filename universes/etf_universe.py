@@ -13,31 +13,40 @@ from __future__ import annotations
 # correlation with anything else, and verified -- not assumed -- to have
 # traded without a gap from inception to today (see INCEPTIONS below).
 #
+# The first version of this file also included IYR (REITs), EFA (developed
+# ex-US equities) and EEM (emerging-market equities), on the assumption
+# that different geographies/sectors would decorrelate from SPY. Checked
+# against real daily returns 2007-04-11..2026-09-01 (yfinance), that
+# assumption was wrong: SPY-EFA corr = 0.89, SPY-EEM = 0.82, SPY-IYR =
+# 0.75 -- international and real-estate equities move with US equities
+# almost as tightly as DJIA constituents move with each other, so they
+# were dropped as redundant rather than kept for the sake of asset count.
+# UUP (US dollar) was added in their place. Mean |correlation| across all
+# pairs dropped from 0.403 (the original 7) to 0.247 (the 5 below) on the
+# same window -- a real reduction, not an assumption.
+#
 # Each entry is (ticker, inception date, asset class / risk factor):
 #   SPY  1993-01-29  US large-cap equities (S&P 500)
-#   IYR  2000-06-19  US real estate (REITs)
-#   EFA  2001-08-27  developed-market ex-US equities (MSCI EAFE)
 #   TLT  2002-07-30  US Treasuries, 20+ year (interest-rate duration)
-#   EEM  2003-04-14  emerging-market equities (MSCI EM)
 #   GLD  2004-11-18  gold (safe-haven / inflation hedge)
 #   DBC  2006-02-06  broad commodities (energy, agriculture, metals)
-# Picked one per factor rather than several near-duplicates per asset
-# class (e.g. no second Treasury-duration or investment-grade-credit
-# ETF alongside TLT) -- two assets dominated by the same factor would
-# just reintroduce the correlation problem this universe exists to avoid.
+#   UUP  2007-03-01  US dollar index (currency, negatively correlated
+#                    with almost everything else here: -0.07..-0.42)
+# One ETF per factor, not several near-duplicates per asset class (e.g.
+# no second Treasury-duration ETF alongside TLT) -- two assets dominated
+# by the same factor would just reintroduce the correlation problem this
+# universe exists to avoid.
 #
 # Inception dates and continuous trading confirmed directly against
 # yfinance (first/last available bar per ticker), the same kind of check
-# djia_universe.py does for UNAVAILABLE -- none of these seven has a gap
+# djia_universe.py does for UNAVAILABLE -- none of these five has a gap
 # or a delisting, unlike several DJIA seats.
 INCEPTIONS = [
     ("SPY", "1993-01-29"),
-    ("IYR", "2000-06-19"),
-    ("EFA", "2001-08-27"),
     ("TLT", "2002-07-30"),
-    ("EEM", "2003-04-14"),
     ("GLD", "2004-11-18"),
     ("DBC", "2006-02-06"),
+    ("UUP", "2007-03-01"),
 ]
 
 
