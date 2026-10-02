@@ -23,19 +23,20 @@ from strategies.follow_the_winner.eg import EG
 from strategies.follow_the_winner.ons import ONS
 from strategies.follow_the_winner.up import UP
 
-# 2000-06-19 is not an arbitrary choice -- it's IYR's inception, the
-# earliest point at which the ETF universe has 2+ assets (SPY alone
-# started 1993-01-29, see universes/etf_universe.py). Several strategies
-# (PAMR/CWMR/OLMAR) divide by the spread of x_t around its cross-asset
-# mean, which is identically zero with a single asset, so the backtest
-# can't start before this date without that degenerate case. END matches
-# run.py's so the two universes cover the same stretch of calendar time.
-START = "2000-06-19"
+# 2007-03-01 is UUP's inception -- the first date all five ETFs exist, so
+# the backtest doesn't have to grow the universe mid-window the way
+# djia_universe-driven runs do. Starting any earlier would mean fewer
+# than 5 assets for part of the run; starting later would be trimming
+# real, available history for no reason. Shorter than run.py's 2000-2026
+# only because the universe itself doesn't go back further, not because
+# the window was picked to flatter any particular strategy.
+START = "2007-03-01"
 END = "2026-09-01"
 
 # same reasoning as run.py: ONS replays its full history and solves a QP
-# every period, so it's minutes at a few hundred periods but hours at
-# the ~6700 this window has. Off by default for that reason.
+# every period. Off by default for consistency with run.py even though
+# this window is short enough (~2700 periods) that it would likely finish
+# in minutes rather than hours.
 INCLUDE_ONS = False
 
 OUTPUT_DIR = "outputs"

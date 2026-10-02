@@ -29,8 +29,9 @@ behind them, are reported alongside the final design, not hidden behind it.
 Section~\ref{sec:formulation} fixes notation. Section~\ref{sec:process}
 is the core of the paper: a chronological account of the project's
 development. Section~\ref{sec:results} reports where things currently
-stand, and Section~\ref{sec:limitations} is explicit about what remains
-open and why it was left that way.
+stand, Section~\ref{sec:etf} cross-checks those results on a second,
+deliberately decorrelated universe, and Section~\ref{sec:limitations} is
+explicit about what remains open and why it was left that way.
 
 \section{Problem Formulation}
 \label{sec:formulation}
@@ -542,6 +543,42 @@ post-2012 changes, contemporary reporting and S\&P Dow Jones Indices'
 own press releases directly (including the most recent change, Alphabet
 replacing Verizon on 2026-06-29).
 
+\begin{table}[h]
+\centering
+\begin{tabular}{llr}
+\toprule
+Segment & Assets & $\approx$ trading days \\
+\midrule
+2000-01-01 -- 2004-04-08 & 27 & 1113 \\
+2004-04-08 -- 2008-02-19 & 28 & 1008 \\
+2008-02-19 -- 2008-09-22 & 28 &  154 \\
+2008-09-22 -- 2009-06-08 & 27 &  185 \\
+2009-06-08 -- 2012-09-24 & 28 &  860 \\
+2012-09-24 -- 2013-09-23 & 29 &  260 \\
+2013-09-23 -- 2015-03-19 & 29 &  388 \\
+2015-03-19 -- 2017-09-01 & 30 &  641 \\
+2017-09-01 -- 2018-06-26 & 29 &  212 \\
+2018-06-26 -- 2019-04-02 & 28 &  200 \\
+2019-04-02 -- 2020-08-31 & 29 &  369 \\
+2020-08-31 -- 2024-02-26 & 29 &  910 \\
+2024-02-26 -- 2024-11-08 & 30 &  184 \\
+2024-11-08 -- 2026-06-29 & 30 &  426 \\
+2026-06-29 -- 2026-09-01 & 30 &   46 \\
+\bottomrule
+\end{tabular}
+\caption{The fifteen segments \texttt{universes/djia\_universe.py}'s
+reconstitution timeline produces over 2000-01-01 to 2026-09-01, each run
+by \texttt{engine.run\_backtest\_segmented} as an independent backtest
+with a fresh strategy instance (Section~\ref{sec:survivorship2}).
+Lengths are \texttt{numpy.busday\_count} between segment boundaries, an
+approximation to actual trading days (not adjusted for holidays).
+Referenced in Section~\ref{sec:limitations}'s discussion of what
+resetting strategy state at each boundary costs, and of why this same
+$O(T^2)$ replay cost is far cheaper chopped into fifteen pieces than paid
+on one long segment (Section~\ref{sec:etf-results}).}
+\label{tab:djia-segments}
+\end{table}
+
 Three further data gaps turned up, each confirmed directly against
 \texttt{yfinance} and each a distinct failure mode from the three
 already documented (WBA, GM, KFT): DowDuPont (existed only 2017-2019
@@ -944,7 +981,265 @@ rather than addressed immediately, each for a stated reason:
     \item \textbf{Remaining book chapters.} Pattern Matching,
     Meta-Algorithms, and the proposed learned strategy in this paper's
     own title are not yet implemented.
+    \item \textbf{Strategy state resets at every DJIA reconstitution, not
+    just for the tickers that actually changed.}
+    \texttt{engine.run\_backtest\_segmented} (Section~\ref{sec:survivorship2})
+    gives each reconstitution segment a fresh strategy instance because
+    asset \emph{columns} mean different tickers before and after a
+    reconstitution -- correct for the 2-3 tickers that are actually added
+    or removed, but it also discards accumulated state for the other
+    26-28 tickers that persist unchanged across the boundary. For
+    strategies whose edge comes from accumulated history (OLMAR's moving
+    average, CWMR's variance estimate, UP's wealth-weighting over
+    candidate portfolios) this is a real cost, not a bookkeeping detail:
+    Table~\ref{tab:djia-segments} shows the fifteen segments range from
+    roughly 46 to 1113 trading days, so several segments end well before
+    an adaptive strategy has much history to adapt with. Every strategy
+    faces the same fourteen resets on the same dates, so the
+    \emph{relative} ranking in Table~\ref{tab:results-full} is still a
+    fair comparison under this protocol, but the \emph{absolute}
+    performance of adaptive strategies is plausibly understated relative
+    to what continuous, ticker-indexed state would show. A correct fix
+    would reindex history by ticker label rather than column position,
+    resetting state only for tickers actually entering or leaving and
+    carrying it forward for the rest -- a real change to
+    \texttt{engine.py} and to how every strategy consumes
+    \texttt{history}, not a parameter flip, and one that would change the
+    already-reported Table~\ref{tab:results-full} numbers. Left open for
+    that reason rather than attempted alongside this paper's other
+    results.
+    \item \textbf{Several strategies are far more expensive on one long
+    segment than on many short ones, and the ETF universe exposed this
+    by accident.} \texttt{EG}, \texttt{UP}, \texttt{Anticor},
+    \texttt{PAMR}/\texttt{PAMR-1}/\texttt{PAMR-2}, \texttt{CWMR}, and
+    \texttt{OLMAR}/\texttt{OLMAR-2} all implement \texttt{update(history)}
+    as a pure function that recomputes from scratch over the full history
+    on every call (Section~\ref{sec:process}'s stateless contract), an
+    $O(T^2)$ cost in the number of periods $T$. On the DJIA universe this
+    is masked rather than avoided: fourteen reconstitutions
+    (Table~\ref{tab:djia-segments}) chop a 26.7-year, 6956-trading-day
+    window into fifteen segments averaging under 500 trading days each,
+    and $O(T^2)$ on many small segments is far cheaper than $O(T^2)$ on
+    one large one.
+    The ETF universe (Section~\ref{sec:etf}) has no reconstitutions at
+    all, so its 4906 periods run as a single unbroken segment -- and
+    plain PAMR and PAMR-1, timed in isolation, took 790s and 808s
+    respectively (Section~\ref{sec:etf-results}), an order of magnitude
+    slower than their DJIA counterparts despite covering fewer total
+    periods and a fifth as many assets. This is the same underlying
+    design tradeoff already noted for ONS (Section~\ref{sec:ons}), just
+    triggered by a different universe property (no membership changes)
+    rather than by one strategy's asymptotic complexity.
 \end{itemize}
+
+\section{A Second Universe: Cross-Asset ETFs}
+\label{sec:etf}
+
+\subsection{Why a Second Universe}
+
+Every result up to this point is on the same underlying bet: 28-30 DJIA
+constituents are all US large-cap equities, so every strategy in
+Table~\ref{tab:results-full} is really trading one correlated
+equity-beta factor under a different rebalancing rule, not genuinely
+different opportunities. Checking whether the rankings above are a
+property of these algorithms or an artifact of this one correlated
+universe needs a second universe built to be different on purpose --
+and built without silently reintroducing the same two problems
+Sections~\ref{sec:survivorship} and~\ref{sec:survivorship2} already
+solved once for the DJIA: survivorship bias (picking, after the fact,
+whichever instruments still trade today and look uncorrelated) and
+correlation itself.
+
+\subsection{Choosing the Universe: Asset Class, Not Geography}
+\label{sec:etf-choice}
+
+The first instinct -- add non-US equities, since the DJIA problem looks
+like a US-company bias -- was checked against real daily returns rather
+than assumed to work, and the assumption was wrong. Single-country
+equity ETFs (Japan, Germany, the UK, South Korea, Brazil, China) all
+correlate 0.67-0.83 with SPY over 2007-03-01 to 2026-09-01; broadening
+further, to all-world-ex-US or global-mega-cap funds (VEU, ACWX, IOO),
+correlates \emph{more} with SPY (0.89-0.96), not less -- diversifying
+across more countries and companies cancels out idiosyncratic,
+single-market risk and leaves exactly the global equity-beta factor
+that dominates SPY itself. Sector-based diversification fails the same
+check for the same underlying reason: the nine original SPDR sector
+ETFs (technology, financials, energy, health care, consumer
+discretionary, consumer staples, industrials, materials, utilities),
+all trading continuously since 1998-12-22, have a mean pairwise
+correlation of 0.598 and each correlates 0.60-0.88 with SPY -- worse
+decorrelation than the single-country case, since sector ETFs are
+subsets of the same index, sharing the same currency, monetary policy,
+and risk-on/risk-off cycle. A real-estate ETF (\texttt{VNQ}) and an
+investment-grade bond ETF (\texttt{AGG}) were checked on the same
+grounds and rejected for the same reason: \texttt{VNQ} correlates 0.75
+with SPY (REITs trade like equities), and \texttt{AGG} correlates 0.71
+with \texttt{TLT} (both are the same interest-rate-duration factor).
+Table~\ref{tab:etf-correlation} summarizes all of this directly, rather
+than asserting the conclusion.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrl}
+\toprule
+Candidate universe & Correlation & Window \\
+\midrule
+Single-country equities (FXI/EWZ/EWY/EWJ/EWG/EWU) & 0.67--0.83 vs.\ SPY & 2007-03-01 -- 2026-09-01 \\
+Broad ex-US / global equities (VEU/ACWX/IOO) & 0.89--0.96 vs.\ SPY & 2008-04-01 -- 2026-09-01 \\
+9 original SPDR sector ETFs (XLK, XLF, \ldots, XLU) & 0.598 mean pairwise & 1998-12-22 -- 2026-09-01 \\
+First cross-asset attempt (SPY, IYR, EFA, TLT, EEM, GLD, DBC) & 0.403 mean pairwise & 2007-04-11 -- 2026-09-01 \\
+Final universe (SPY, TLT, GLD, DBC, UUP) & 0.247 mean pairwise & 2007-04-11 -- 2026-09-01 \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Every universe considered, checked against real \texttt{yfinance}
+daily returns rather than assumed. What actually reduces correlation is
+asset \emph{class} (equities vs.\ rates vs.\ gold vs.\ commodities vs.\
+currency), not geography or breadth within equities -- the opposite of
+the first instinct.}
+\label{tab:etf-correlation}
+\end{table}
+
+Even the first cross-asset attempt (adding IYR, EFA, EEM alongside TLT,
+GLD, DBC) was still carrying redundant equity exposure: EFA and EEM
+correlate 0.82-0.89 with SPY and IYR correlates 0.75, essentially the
+same problem in a smaller dose. Dropping those three and adding
+\texttt{UUP} (the US dollar index, negatively correlated with almost
+everything else: $-0.07$ to $-0.42$) in their place is what actually
+moved the mean pairwise correlation from 0.403 to 0.247. The final
+five-ETF universe (\texttt{universes/etf\_universe.py}) is one large,
+continuously-traded fund per risk factor, chosen for what it represents
+rather than for its correlation with anything else, with inception date
+and continuous trading (no gap, no delisting) confirmed directly
+against \texttt{yfinance} -- the same diligence
+\texttt{universes/djia\_universe.py} applies to \texttt{UNAVAILABLE}
+(Section~\ref{sec:survivorship2}), applied here to a different failure
+mode: an ETF universe picked for being uncorrelated \emph{today} would
+silently select for the handful of funds that never closed, out of the
+thousands, mostly leveraged or thematic, that have.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llr}
+\toprule
+Ticker & Risk factor & Inception \\
+\midrule
+SPY & US large-cap equities (S\&P 500) & 1993-01-29 \\
+TLT & US Treasuries, 20+ year (interest-rate duration) & 2002-07-30 \\
+GLD & Gold (safe-haven / inflation hedge) & 2004-11-18 \\
+DBC & Broad commodities (energy, agriculture, metals) & 2006-02-06 \\
+UUP & US dollar index (currency) & 2007-03-01 \\
+\bottomrule
+\end{tabular}
+\caption{The final cross-asset-class universe. The backtest window,
+2007-03-01 to 2026-09-01, starts at UUP's inception -- the first date
+all five exist -- rather than growing the universe further back with
+fewer assets; \texttt{universes/etf\_universe.py}'s \texttt{segments()}
+function supports the latter (mirroring
+\texttt{universes/djia\_universe.py}'s interface) but it is not needed
+here since none of the five has ever closed or been replaced.}
+\label{tab:etf-universe}
+\end{table}
+
+\subsection{Results: A Different Universe, A Different Ranking}
+\label{sec:etf-results}
+
+Table~\ref{tab:results-etf} reports the same Chapter 2.3 metrics as
+Table~\ref{tab:results-full}, over the cross-asset universe instead.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & MDD$^\dagger$ & Calmar & $t$ (p) \\
+\midrule
+BAH          &  3.7207 & $+$6.98\%  &  8.72\% & 0.34    &  36.92\%  & 0.19 & 3.61 (0.000) \\
+CRP          &  3.4620 & $+$6.59\%  &  7.60\% & 0.34    &  29.52\%  & 0.22 & 3.87 (0.000) \\
+UP           &  3.5120 & $+$6.67\%  &  7.70\% & 0.35    &  31.38\%  & 0.21 & 3.87 (0.000) \\
+EG           &  3.4767 & $+$6.61\%  &  7.63\% & 0.34    &  29.97\%  & 0.22 & 3.87 (0.000) \\
+Anticor      &  6.2704 & $+$9.89\%  & 17.80\% & 0.33    &  91.10\%  & 0.11 & 2.73 (0.003) \\
+PAMR-2 ($C{=}1$) & 2.0713 & $+$3.81\% & 10.12\% & $-$0.02 &  41.86\%  & 0.09 & 1.85 (0.032) \\
+CWMR         & 11.8039 & $+$13.52\% & 18.15\% & 0.52    & 248.68\%  & 0.05 & 3.48 (0.000) \\
+OLMAR        & 26.6699 & $+$18.37\% & 18.87\% & 0.76    & 571.45\%  & 0.03 & 4.36 (0.000) \\
+OLMAR2       & 28.2210 & $+$18.72\% & 18.62\% & 0.79    & 574.81\%  & 0.03 & 4.48 (0.000) \\
+\midrule
+Best Stock$^*$ &  7.8057 & $+$11.13\% & 19.63\% & 0.36  & 115.01\%  & 0.10 & 2.81 (0.003) \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Final wealth and Chapter 2.3 metrics, 2007-03-01 to 2026-09-01,
+the cross-asset ETF universe (Table~\ref{tab:etf-universe}), a single
+unbroken segment since none of the five ETFs has ever closed or been
+replaced. $^*$Best Stock is a hindsight-only upper bound
+(Section~\ref{sec:beststock}), not a real strategy. $^\dagger$MDD is the
+absolute drawdown defined in Section~\ref{sec:process}; see the same
+caveat as Table~\ref{tab:results-full}.}
+\label{tab:results-etf}
+\end{table}
+
+The ranking inverts almost exactly. On the DJIA, PAMR-2 is the
+standout, ahead of every causal strategy (Table~\ref{tab:results-full});
+here it is the \emph{worst} real strategy, with a Sharpe ratio
+indistinguishable from zero. OLMAR and CWMR, which lose money on the
+DJIA, are the two best strategies here by a wide margin. This was
+checked for a capping artifact before being trusted: re-running plain,
+uncapped PAMR and PAMR-1 alongside PAMR-2 on the identical window
+(Table~\ref{tab:etf-pamr}) shows the opposite pattern from
+Table~\ref{tab:pamr-sweep}'s DJIA result -- capping \emph{hurts} here
+rather than rescuing, cutting PAMR's final wealth from $11.07\times$ to
+roughly $2.07\times$ for both capped variants.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+& Final $S_n$ & APY & Sharpe & $t$ (p) \\
+\midrule
+PAMR (uncapped) & 11.0673 & $+$13.14\% & 0.50    & 3.40 (0.000) \\
+PAMR-1 ($C{=}1$) &  2.0646 & $+$3.79\%  & $-$0.02 & 1.71 (0.043) \\
+PAMR-2 ($C{=}1$) &  2.0713 & $+$3.81\%  & $-$0.02 & 1.85 (0.032) \\
+\bottomrule
+\end{tabular}
+\caption{Plain PAMR against its capped variants, same window as
+Table~\ref{tab:results-etf}. Contrast with Table~\ref{tab:pamr-sweep}:
+on the DJIA, capping turns a near-total collapse into the best strategy
+in the comparison; here, capping turns the second-best strategy into the
+worst.}
+\label{tab:etf-pamr}
+\end{table}
+
+Both halves of this inversion trace to the same mechanism: what kind of
+reversion each strategy is built to exploit, and what kind of reversion
+each universe actually has. PAMR bets on single-period reversion -- an
+asset that underperformed the cross-asset mean today is bid up for
+tomorrow -- which matches individual stocks' well-documented short-term
+overreaction-and-reversal behavior, exactly what thirty separate
+companies' daily idiosyncratic news supplies in volume. OLMAR instead
+bets on reversion to a multi-period moving average, a slower dynamic.
+Five diversified macro factors (a broad equity index, long Treasuries,
+gold, a commodities basket, the dollar) don't carry that kind of daily,
+company-specific noise; what reversion they do have plays out over the
+weeks-to-months of a rate cycle or a risk-on/risk-off swing, which is
+what OLMAR and CWMR's longer memory is built to track and what PAMR's
+one-day lookback mostly can't distinguish from noise -- consistent with
+PAMR-2's Sharpe ratio of $-0.02$, indistinguishable from not trading at
+all. The capping asymmetry follows the same logic from the other
+direction: PAMR-1/PAMR-2's cap exists specifically to bound how much a
+single bad day can concentrate the portfolio into one asset
+(Section~\ref{sec:pamr-tuning}), a real danger when that asset is a
+company that can keep deteriorating (bankruptcy, a cascading earnings
+miss) but a much smaller one when the candidate assets are a broad
+equity index, sovereign debt, gold, or a basket of commodities, none of
+which go to zero. The cap that rescues PAMR on the DJIA mostly just
+throttles a genuine, slower signal here.
+
+This inversion is itself the result worth reporting: it is evidence
+that the rankings in Table~\ref{tab:results-full} are not a universal
+property of these algorithms, but a property of the specific
+correlation and reversion structure of US large-cap equities, exactly
+the question Section~\ref{sec:etf} set out to check.
 
 \section{Conclusion}
 
@@ -981,5 +1276,22 @@ overfitting risk caught before being reported, and the mechanistic trace
 that ruled out a bug before any of this was trusted -- is reported here
 as part of the project's contribution, not smoothed over in favor of a
 cleaner-looking final result.
+
+A third result (Section~\ref{sec:etf}) complicates the first two in a
+useful way. Built to check whether Table~\ref{tab:results-full}'s
+rankings hold beyond one correlated universe of US equities, the
+cross-asset ETF universe instead inverted them: PAMR-2, the DJIA's best
+causal strategy, becomes its worst there, while OLMAR and CWMR, which
+lose money on the DJIA, become the two best. Tracing why -- PAMR's
+single-period reversal matches individual stocks' daily idiosyncratic
+noise but reads diversified macro factors' slower reversion as noise
+and trades it away, while OLMAR and CWMR's longer memory does the
+opposite -- turned what could have looked like a contradiction into the
+paper's clearest evidence that these algorithms' rankings are properties
+of the market being traded, not of the algorithms alone. Reporting an
+inversion this complete, rather than the single universe that would
+have made for a tidier narrative, is the point: a learned strategy
+judged only on DJIA-like correlated equities would be judged on a
+narrower question than it should be.
 
 \end{document}
