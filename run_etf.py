@@ -38,10 +38,10 @@ END = "2026-09-01"
 # in minutes rather than hours.
 INCLUDE_ONS = False
 
-OUTPUT_DIR = "outputs"
-PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves.png"
-GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_grouped.png"
-GRID_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_grid.png"
+OUTPUT_DIR = "outputs/etf"
+PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_all_strategies.png"
+GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_steady_vs_aggressive.png"
+GRID_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_per_strategy_grid.png"
 
 LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 

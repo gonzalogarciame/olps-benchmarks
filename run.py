@@ -40,10 +40,10 @@ END = "2026-09-01"
 # default for that reason; flip to True to include it anyway.
 INCLUDE_ONS = False
 
-OUTPUT_DIR = "outputs"
-PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves.png"
-GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves_grouped.png"
-GRID_PLOT_PATH = f"{OUTPUT_DIR}/wealth_curves_grid.png"
+OUTPUT_DIR = "outputs/djia"
+PLOT_PATH = f"{OUTPUT_DIR}/djia_wealth_curves_all_strategies.png"
+GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/djia_wealth_curves_steady_vs_aggressive.png"
+GRID_PLOT_PATH = f"{OUTPUT_DIR}/djia_wealth_curves_per_strategy_grid.png"
 
 # distinct dash patterns so nearly-overlapping wealth curves stay
 # distinguishable even where color alone would not separate them
