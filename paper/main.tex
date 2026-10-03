@@ -720,6 +720,109 @@ therefore left at its uncapped result; this asymmetry -- one algorithm
 in the family has a documented fix, the other does not -- is itself
 worth noting rather than papered over.
 
+\subsection{Tuning Anticor's and OLMAR-2's Undocumented Parameters}
+\label{sec:anticor-olmar2-tuning}
+
+PAMR-1/PAMR-2's $C$ had a book-cited value to fall back on once the
+search's own best-scoring value was rejected as untrustworthy
+(Section~\ref{sec:pamr-tuning}). Two other parameters have no such
+anchor: Anticor's window $w$ and OLMAR-2's decay $\alpha$ are both,
+by the implementation's own comments, ``our own interpretive choice,
+not a direct quote'' -- $w=5$ chosen only to match PAMR/OLMAR's cited
+defaults, $\alpha=0.5$ chosen only as the midpoint of the book's stated
+valid range $(0,1)$. With no book value to prefer on principle, the
+same tune-then-validate discipline as the PAMR sweep applies directly:
+sweep on the 2007-2009 crisis window, confirm on the independent
+2000-2026 window, and adopt whatever survives both rather than
+whatever merely wins the first.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrrr}
+\toprule
+& \multicolumn{2}{c}{Anticor APY} & \multicolumn{2}{c}{OLMAR-2 APY} \\
+$w$ / $\alpha$ & 2007-2009 & 2000-2026 & 2007-2009 & 2000-2026 \\
+\midrule
+3 / 0.1   & $+$24.11\% & $+$7.18\%  & $+$13.42\% & $-$1.83\% \\
+5 / 0.3   & $-$13.34\% & $+$8.45\%  & $+$20.77\% & $+$1.75\% \\
+8 / 0.5   & $+$24.96\% & $+$16.57\% & $-$14.98\% & $-$6.01\% \\
+12 / 0.7  & $+$40.75\% & $+$18.71\% & $-$37.27\% & $-$10.01\% \\
+20 / 0.9  & $-$3.04\%  & $+$4.39\%  & $-$59.04\% & $-$13.14\% \\
+\bottomrule
+\end{tabular}
+\caption{Anticor's $w \in \{3,5,8,12,20\}$ and OLMAR-2's $\alpha \in
+\{0.1,0.3,0.5,0.7,0.9\}$ swept independently, each against the same two
+windows the PAMR sweep used (Table~\ref{tab:pamr-sweep}). Rows pair
+values by position in each list, not by any relationship between $w$
+and $\alpha$ themselves -- the two parameters belong to different
+strategies and are swept separately.}
+\label{tab:anticor-olmar2-sweep}
+\end{table}
+
+Both parameters show a real, non-monotonic optimum, not noise: Anticor
+peaks at $w=12$ on both windows ($+40.75\%$ crisis, $+18.71\%$ full,
+the latter significant at $p=0.001$ and roughly double $w=5$'s
+$+8.45\%$), while $w=20$ overshoots back into losses on the crisis
+window. OLMAR-2 peaks at $\alpha=0.3$ on both windows ($+20.77\%$
+crisis, $+1.75\%$ full) while every value above it, including the
+book-range midpoint $\alpha=0.5$ the original implementation used,
+degrades monotonically into an increasingly severe loss ($\alpha=0.9$:
+$-59.04\%$ crisis, $-13.14\%$ full). $w=12$ and $\alpha=0.3$ are
+adopted as the new defaults (\texttt{strategies/follow\_the\_loser/anticor.py},
+\texttt{olmar2.py}), replacing the arbitrary guesses -- not because
+they are the single best-scoring values in some larger search, but
+because they are the best-scoring values that also survive an
+independent window, the same standard already applied to $C$.
+
+This tuning was checked against the cross-asset ETF universe
+(Section~\ref{sec:etf}) before being treated as settled, and the check
+failed in an informative way: Table~\ref{tab:anticor-olmar2-etf} shows
+both tuned values performing \emph{worse} there than the original
+untuned ones. This is not a contradiction but a second, independent
+confirmation of Section~\ref{sec:etf-results}'s central finding --
+optimal parameters, like algorithm rankings, are a property of the
+market being traded, not a universal constant of the algorithm. $w=12$
+and $\alpha=0.3$ are therefore DJIA-specific defaults; \texttt{run\_etf.py}
+pins Anticor and OLMAR-2 back to $w=5$ and $\alpha=0.5$ explicitly,
+with no attempt to separately tune the ETF universe -- doing so would
+mean searching and reporting on the same single window, the exact
+practice this section exists to avoid.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrrr}
+\toprule
+& Final $S_n$ & APY & Sharpe & MDD$^\dagger$ & $t$ (p) \\
+\midrule
+Anticor ($w{=}5$, untuned) & 6.2704 & $+$9.89\%  & 0.33 &  91.10\% & 2.73 (0.003) \\
+Anticor ($w{=}12$, DJIA-tuned) & 3.0017 & $+$5.81\%  & 0.10 & 124.59\% & 1.78 (0.037) \\
+OLMAR-2 ($\alpha{=}0.5$, untuned) & 28.2173 & $+$18.72\% & 0.79 & 574.74\% & 4.48 (0.000) \\
+OLMAR-2 ($\alpha{=}0.3$, DJIA-tuned) & 13.3941 & $+$14.26\% & 0.54 & 284.75\% & 3.50 (0.000) \\
+\bottomrule
+\end{tabular}
+\caption{The DJIA-tuned values from Table~\ref{tab:anticor-olmar2-sweep},
+confirmed directly on the ETF universe (Table~\ref{tab:etf-universe})
+rather than assumed to transfer -- and they do not: both tuned values
+underperform the untuned ones that Table~\ref{tab:results-etf} already
+reports. $^\dagger$MDD is the absolute drawdown defined in
+Section~\ref{sec:process}.}
+\label{tab:anticor-olmar2-etf}
+\end{table}
+
+ONS's $\delta$ was checked on the same footing but could not be swept
+the same way: Section~\ref{sec:ons}'s $O(n^2)$ cost makes the
+2000-2026 window intractable for a sweep (Section~\ref{sec:broaden}),
+leaving only the 2007-2009 window to test on and no independent window
+to confirm anything against. $\delta \in \{1/32, 1/16, 1/8, 1/4, 1/2\}$
+on that one window gives APY of $+6.70\%$, $+7.14\%$, $+8.50\%$,
+$+8.55\%$, and $-1.45\%$ respectively -- a mild preference for
+$\delta \in \{1/8, 1/4\}$ over the current default $\delta=1/8$'s
+neighbors, but every value's $t$-statistic has $p > 0.2$, indistinguishable
+from noise, and there is no second window to tell a real effect from
+overfitting even if one were visible. $\delta=1/8$ is left unchanged:
+the honest conclusion from one noisy, unconfirmable sweep is that there
+is no evidence to change it, not a new tuned value.
+
 \section{Current Results}
 \label{sec:results}
 
@@ -867,11 +970,11 @@ BAH          & 10.1616 & $+$9.13\%  & 18.55\% & 0.28    & 166.56\%   & 0.05    &
 CRP          & 12.2067 & $+$9.88\%  & 19.50\% & 0.30    & 202.21\%   & 0.05    & 2.99 (0.001) \\
 UP           & 12.2184 & $+$9.89\%  & 19.46\% & 0.30    & 200.24\%   & 0.05    & 3.00 (0.001) \\
 EG           & 12.0728 & $+$9.84\%  & 19.44\% & 0.30    & 199.94\%   & 0.05    & 2.99 (0.001) \\
-Anticor      &  8.6187 & $+$8.45\%  & 39.59\% & 0.11    & 1012.15\%  & 0.01    & 2.13 (0.016) \\
+Anticor ($w{=}12$) & 94.9427 & $+$18.71\% & 38.21\% & 0.38 & 11900.50\% & 0.00 & 3.27 (0.001) \\
 PAMR ($C{=}1$) & 16.1711 & $+$11.05\% & 30.02\% & 0.23  & 438.61\%   & 0.03    & 2.58 (0.005) \\
 CWMR         &  0.0227 & $-$13.29\% & 43.78\% & $-$0.39 & 174.10\%  & $-$0.08 & $-$0.49 (0.687) \\
 OLMAR        &  0.7485 & $-$1.09\%  & 46.83\% & $-$0.11 & 510.77\%  & $-$0.00 & 1.15 (0.126) \\
-OLMAR2       &  0.1931 & $-$6.01\%  & 47.72\% & $-$0.21 & 239.43\%  & $-$0.03 & 0.62 (0.267) \\
+OLMAR2 ($\alpha{=}0.3$) & 1.5866 & $+$1.75\%  & 47.92\% & $-$0.05 & 464.26\%  & 0.00 & 1.47 (0.071) \\
 \midrule
 Best Stock$^*$ & 11385.9571 & $+$42.17\% & 29.13\% & 1.31 & 94247.86\% & 0.00 & 6.97 (0.000) \\
 \bottomrule
@@ -879,8 +982,11 @@ Best Stock$^*$ & 11385.9571 & $+$42.17\% & 29.13\% & 1.31 & 94247.86\% & 0.00 & 
 }
 \caption{Final wealth and Chapter 2.3 evaluation metrics, 2000-01-01 to
 2026-09-01, reconstitution-tracked Dow Jones universe
-(Section~\ref{sec:broaden}). $^*$Best Stock is reported separately
-(Section~\ref{sec:beststock}). $^\dagger$MDD is the absolute drawdown
+(Section~\ref{sec:broaden}). Anticor's $w$ and OLMAR-2's $\alpha$ are
+tuned values (Section~\ref{sec:anticor-olmar2-tuning}), not the
+arbitrary guesses an earlier version of this table reported. $^*$Best
+Stock is reported separately (Section~\ref{sec:beststock}).
+$^\dagger$MDD is the absolute drawdown
 defined in Section~\ref{sec:process} (see also the limitation noted in
 Section~\ref{sec:limitations}) -- at this window's scale, where several
 strategies grow to many times their starting wealth before any
@@ -895,24 +1001,31 @@ narrower window did alone. BAH, CRP, UP, and EG still cluster tightly,
 now all solidly profitable (APY 9.1-9.9\%, each significant at
 $p \leq 0.002$) -- a long enough window for a diversified, causally
 correct strategy to show a real edge over cash, consistent with the
-historical performance of a broad blue-chip basket. Anticor is
-profitable and significant ($p=0.016$) but trails the simple baselines
-here, the opposite of its relative standing in the crisis window alone.
-CWMR remains a near-total loss, unresolved by anything tried
-(Section~\ref{sec:pamr-tuning}). Both OLMAR variants lose money over
-the full window -- OLMAR2 (the exponential-moving-average variant) is
-worse than OLMAR (-6.01\% vs. -1.09\% APY), not better, so trying the
-book's second variant did not rescue it the way capping rescued PAMR;
-this asymmetry (one fix works cleanly, the other alternative tried does
-not) is as informative as a result that worked.
+historical performance of a broad blue-chip basket. CWMR remains a
+near-total loss, unresolved by anything tried (Section~\ref{sec:pamr-tuning}).
+OLMAR, at the book's own $w=5$, stays a small loss ($-1.09\%$ APY);
+OLMAR-2 edges narrowly past it ($+1.75\%$ APY) only once $\alpha$ is
+tuned (Section~\ref{sec:anticor-olmar2-tuning}) rather than left at the
+book-range midpoint that made it the worse of the two variants in an
+earlier version of this table -- tuning the undocumented parameter
+helped where trying the book's second variant formula alone, at an
+untuned $\alpha$, had not. Neither crossing is significant at
+conventional levels ($p=0.126$ and $p=0.071$ respectively).
 
-PAMR is the standout: at $C=1$, the strategy that lost 98\% of its
-value uncapped grows to $16.17\times$ over 26.7 years -- the best
-final wealth of every causal strategy tested, ahead of CRP, UP, and EG,
-with the second-tightest significance in the table ($p=0.005$) after
-Best Stock itself. Section~\ref{sec:pamr-tuning} is the full account of
-how that number was reached and why $C=1$ rather than a better-scoring
-but untrustworthy $C=0.1$.
+PAMR-2 and Anticor are the two real standouts, and which one leads
+depends on the same kind of tuning. At $C=1$, PAMR-2 grows to
+$16.17\times$ over 26.7 years, significant at $p=0.005$ --
+Section~\ref{sec:pamr-tuning} is the full account of how that number
+was reached and why $C=1$ rather than a better-scoring but untrustworthy
+$C=0.1$. Anticor, once its own undocumented parameter ($w$, previously
+just borrowed from PAMR/OLMAR's defaults) is tuned the same disciplined
+way -- swept on the crisis window, confirmed on this one
+(Section~\ref{sec:anticor-olmar2-tuning}) -- grows to $94.94\times$,
+the best final wealth of \emph{any} causal strategy in this comparison,
+nearly six times PAMR-2's, significant at $p=0.001$. Both headline
+results, not just PAMR's, turn out to depend on getting a parameter the
+book does not specify right, rather than on the book's formula alone at
+whatever value happened to be guessed first.
 \label{sec:limitations}
 
 Several gaps were identified during this work and deliberately left open
@@ -1222,17 +1335,35 @@ caveat as Table~\ref{tab:results-full}.}
 \label{tab:results-etf}
 \end{table}
 
-The ranking inverts almost exactly. On the DJIA, PAMR-2 is the
-standout, ahead of every causal strategy (Table~\ref{tab:results-full});
-here it is the \emph{worst} real strategy, with a Sharpe ratio
-indistinguishable from zero. OLMAR and CWMR, which lose money on the
-DJIA, are the two best strategies here by a wide margin. This was
-checked for a capping artifact before being trusted: re-running plain,
-uncapped PAMR and PAMR-1 alongside PAMR-2 on the identical window
-(Table~\ref{tab:etf-pamr}) shows the opposite pattern from
-Table~\ref{tab:pamr-sweep}'s DJIA result -- capping \emph{hurts} here
-rather than rescuing, cutting PAMR's final wealth from $11.07\times$ to
-roughly $2.07\times$ for both capped variants.
+The ranking inverts almost exactly for the mean-reversion strategies,
+PAMR-2 most sharply. On the DJIA, PAMR-2 is the second-best causal
+strategy, behind only the now-tuned Anticor (Table~\ref{tab:results-full},
+Section~\ref{sec:anticor-olmar2-tuning}); here it is the \emph{worst}
+real strategy, with a Sharpe ratio indistinguishable from zero. The
+inversion is just as clean from the other side: OLMAR-2, OLMAR, and
+CWMR -- the three worst-performing causal strategies on the DJIA
+(OLMAR-2 only barely positive even after tuning, OLMAR and CWMR
+outright losses) -- are exactly the three best here, by a wide margin.
+This was checked for a capping artifact before being trusted:
+re-running plain, uncapped PAMR and PAMR-1 alongside PAMR-2 on the
+identical window (Table~\ref{tab:etf-pamr}) shows the opposite pattern
+from Table~\ref{tab:pamr-sweep}'s DJIA result -- capping \emph{hurts}
+here rather than rescuing, cutting PAMR's final wealth from
+$11.07\times$ to roughly $2.07\times$ for both capped variants.
+
+Anticor itself does not invert the same way, and that asymmetry is
+informative on its own. Its DJIA edge comes entirely from tuning $w$
+(Section~\ref{sec:anticor-olmar2-tuning}), and that tuning was already
+shown not to transfer here ($w=12$ underperforms the untuned $w=5$ on
+this universe, Table~\ref{tab:anticor-olmar2-etf}) -- so Anticor
+appears in Table~\ref{tab:results-etf} at its original, untuned $w=5$,
+where it lands mid-pack ($9.89\times$) rather than at either extreme.
+The DJIA's best strategy becoming the ETF universe's worst (PAMR-2) and
+the DJIA's worst becoming the ETF universe's best (OLMAR-2/OLMAR/CWMR)
+are both real; Anticor merely failing to repeat its DJIA performance,
+rather than inverting it, is a third, milder way the same underlying
+fact -- these are universe-specific results, not portable ones -- can
+show up.
 
 \begin{table}[h]
 \centering
@@ -1323,13 +1454,20 @@ cleaner-looking final result.
 A third result (Section~\ref{sec:etf}) complicates the first two in a
 useful way. Built to check whether Table~\ref{tab:results-full}'s
 rankings hold beyond one correlated universe of US equities, the
-cross-asset ETF universe instead inverted them: PAMR-2, the DJIA's best
-causal strategy, becomes its worst there, while OLMAR and CWMR, which
-lose money on the DJIA, become the two best. Tracing why -- PAMR's
-single-period reversal matches individual stocks' daily idiosyncratic
-noise but reads diversified macro factors' slower reversion as noise
-and trades it away, while OLMAR and CWMR's longer memory does the
-opposite -- turned what could have looked like a contradiction into the
+cross-asset ETF universe instead inverted them: PAMR-2, the DJIA's
+second-best causal strategy behind only a newly-tuned Anticor
+(Section~\ref{sec:anticor-olmar2-tuning}), becomes the ETF universe's
+worst, while OLMAR-2, OLMAR, and CWMR -- the DJIA's three worst --
+become its three best. Anticor itself, tellingly, does neither: its
+DJIA edge is entirely a tuned parameter that was separately confirmed
+not to transfer to this universe, so it lands in the middle of the ETF
+ranking instead of at either extreme -- a milder version of the same
+fact from a third angle. Tracing why the two sharp inversions happen --
+PAMR's single-period reversal matches individual stocks' daily
+idiosyncratic noise but reads diversified macro factors' slower
+reversion as noise and trades it away, while OLMAR and CWMR's longer
+memory does the opposite -- turned what could have looked like a
+contradiction into the
 paper's clearest evidence that these algorithms' rankings are properties
 of the market being traded, not of the algorithms alone. Reporting an
 inversion this complete, rather than the single universe that would

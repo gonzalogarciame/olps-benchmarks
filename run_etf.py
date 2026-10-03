@@ -70,11 +70,21 @@ def main() -> None:
         "BestStock": lambda n, pr: BestStock(n, pr),
         "UP": lambda n, pr: UP(n),
         "EG": lambda n, pr: EG(n),
-        "Anticor": lambda n, pr: Anticor(n),
+        # w=5 / alpha=0.5 pinned explicitly rather than left at the class
+        # defaults: those defaults are now tuned for the DJIA universe
+        # (strategies/follow_the_loser/anticor.py, olmar2.py), and that
+        # tuning was confirmed directly NOT to transfer here -- w=12
+        # gives +5.81% APY on this universe versus w=5's +9.89%, and
+        # alpha=0.3 gives +14.26% versus alpha=0.5's +18.72% (paper, Sec.
+        # anticor-olmar2-tuning). Kept at their original, untuned values
+        # here deliberately: with only one ETF-universe window to test
+        # on, tuning them for this universe specifically would be the
+        # same in-sample search the DJIA tuning was careful to avoid.
+        "Anticor": lambda n, pr: Anticor(n, w=5),
         "PAMR2": lambda n, pr: PAMR2(n),
         "CWMR": lambda n, pr: CWMR(n),
         "OLMAR": lambda n, pr: OLMAR(n),
-        "OLMAR2": lambda n, pr: OLMAR2(n),
+        "OLMAR2": lambda n, pr: OLMAR2(n, alpha=0.5),
     }
     if INCLUDE_ONS:
         strategy_factories["ONS"] = lambda n, pr: ONS(n)
