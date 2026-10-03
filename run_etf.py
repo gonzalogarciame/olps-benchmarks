@@ -16,9 +16,8 @@ from strategies.benchmarks.best_stock import BestStock
 from strategies.benchmarks.crp import CRP
 from strategies.follow_the_loser.anticor import Anticor
 from strategies.follow_the_loser.cwmr import CWMR
-from strategies.follow_the_loser.olmar import OLMAR
 from strategies.follow_the_loser.olmar2 import OLMAR2
-from strategies.follow_the_loser.pamr2 import PAMR2
+from strategies.follow_the_loser.pamr import PAMR
 from strategies.follow_the_winner.eg import EG
 from strategies.follow_the_winner.ons import ONS
 from strategies.follow_the_winner.up import UP
@@ -47,7 +46,7 @@ GRID_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_grid.png"
 LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 
 STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR", "OLMAR2"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR", "CWMR", "OLMAR2"]
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -81,9 +80,13 @@ def main() -> None:
         # on, tuning them for this universe specifically would be the
         # same in-sample search the DJIA tuning was careful to avoid.
         "Anticor": lambda n, pr: Anticor(n, w=5),
-        "PAMR2": lambda n, pr: PAMR2(n),
+        # plain PAMR, not PAMR2, is what wins on this universe -- capping
+        # hurts here instead of rescuing (11.07x uncapped vs ~2.07x for
+        # both PAMR-1 and PAMR-2, paper Sec. etf-results), the opposite
+        # of the DJIA case run.py shows. OLMAR2 beats plain OLMAR here
+        # too (28.22x vs 26.67x), so only OLMAR2 is shown, same as run.py.
+        "PAMR": lambda n, pr: PAMR(n),
         "CWMR": lambda n, pr: CWMR(n),
-        "OLMAR": lambda n, pr: OLMAR(n),
         "OLMAR2": lambda n, pr: OLMAR2(n, alpha=0.5),
     }
     if INCLUDE_ONS:

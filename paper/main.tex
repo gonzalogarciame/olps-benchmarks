@@ -1095,8 +1095,9 @@ rather than addressed immediately, each for a stated reason:
     Meta-Algorithms, and the proposed learned strategy in this paper's
     own title are not yet implemented.
     \item \textbf{A real bug in \texttt{djia\_universe.segments()}, found
-    while re-checking a parameter sweep against an independent
-    confirmation run.} The function skipped any reconstitution dated at
+    while re-checking the Anticor/OLMAR-2 sweep (Section~\ref{sec:anticor-olmar2-tuning})
+    against the ETF confirmation run.} The function skipped any
+    reconstitution dated at
     or before the requested \texttt{start} instead of applying it, so
     any window that does not itself begin at 2000-01-01 silently kept
     the year-2000 roster for events that predate it. For the 2007-2009
@@ -1137,6 +1138,18 @@ rather than addressed immediately, each for a stated reason:
     unverified against the current pipeline, not re-confirmed by it.
     Reported here rather than quietly dropped, per this paper's own
     standard for findings that do not resolve cleanly.
+    \item \textbf{Only the best-performing PAMR and OLMAR variant per
+    universe is plotted, not all of them.} \texttt{run.py} shows PAMR-2
+    and OLMAR-2 (both win on the DJIA); \texttt{run\_etf.py} shows plain,
+    uncapped PAMR and OLMAR-2 (the ETF universe's winners are different
+    for PAMR specifically, Section~\ref{sec:etf-results}). This is a
+    presentation choice for the wealth-curve plots only, to keep the
+    headline comparison to one line per algorithm family rather than
+    three near-duplicates where two are already known losers; the full
+    variant-by-variant comparison remains in
+    Table~\ref{tab:anticor-olmar2-sweep}, Table~\ref{tab:etf-pamr}, and
+    Section~\ref{sec:pamr-tuning}'s own tables, none of which were
+    trimmed.
     \item \textbf{Strategy state resets at every DJIA reconstitution, not
     just for the tickers that actually changed.}
     \texttt{engine.run\_backtest\_segmented} (Section~\ref{sec:survivorship2})
