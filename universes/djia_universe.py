@@ -80,12 +80,24 @@ TICKER_ALIASES = {"UTX": "RTX"}
 
 
 def segments(start: str, end: str) -> list[tuple[str, str, list[str]]]:
+    # Every event up to `start` has to be applied to `tickers`, not
+    # skipped, even though no segment is emitted for it -- otherwise a
+    # window that doesn't start at 2000-01-01 (e.g. the 2007-2009 crisis
+    # window) silently reverts to UNIVERSE_2000's year-2000 roster
+    # instead of whatever the Dow's actual composition was by `start`.
+    # Caught directly: the pre-fix version dropped AIG from the
+    # 2007-2009 window entirely (its 2004-04-08 add, before that
+    # window's start, was never applied) despite AIG's September 2008
+    # removal being the window's single best-documented reconstitution.
     tickers = list(UNIVERSE_2000)
     result = []
     seg_start = start
     for date, removed, added in RECONSTITUTIONS:
-        if not (start < date < end):
+        if date <= start:
+            tickers = [t for t in tickers if t not in removed] + added
             continue
+        if date >= end:
+            break
         result.append((seg_start, date, [t for t in tickers if t not in UNAVAILABLE]))
         tickers = [t for t in tickers if t not in removed] + added
         seg_start = date

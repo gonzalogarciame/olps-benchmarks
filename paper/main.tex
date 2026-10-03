@@ -981,6 +981,49 @@ rather than addressed immediately, each for a stated reason:
     \item \textbf{Remaining book chapters.} Pattern Matching,
     Meta-Algorithms, and the proposed learned strategy in this paper's
     own title are not yet implemented.
+    \item \textbf{A real bug in \texttt{djia\_universe.segments()}, found
+    while re-checking a parameter sweep against an independent
+    confirmation run.} The function skipped any reconstitution dated at
+    or before the requested \texttt{start} instead of applying it, so
+    any window that does not itself begin at 2000-01-01 silently kept
+    the year-2000 roster for events that predate it. For the 2007-2009
+    crisis window specifically, this meant AIG -- the window's single
+    best-documented reconstitution -- was never added, while \texttt{T}
+    (removed in the real 2004-04-08 reconstitution, before the crisis
+    window even starts) stayed in the roster. Fixed by applying every
+    event up to \texttt{start} without emitting a segment for it,
+    rather than skipping it outright. The bug could not affect
+    Table~\ref{tab:results-full} (that window starts at 2000-01-01,
+    where no event predates \texttt{start}), and a full recheck of
+    Table~\ref{tab:results-crisis} after the fix reproduced it within
+    rounding noise -- that table was generated before the 2000-2026
+    extension, from code with no reason to exhibit this bug. It does,
+    however, call into question any crisis-window number computed
+    \emph{after} that extension without this fix, which is the next
+    item.
+    \item \textbf{The PAMR aggressiveness sweep (Table~\ref{tab:pamr-sweep})
+    could not be reproduced and the discrepancy is unresolved.}
+    Re-running the identical $C$ sweep on the 2007-2009 window with the
+    current, bug-fixed pipeline gives a qualitatively different result
+    -- monotonically worse APY as $C$ increases, with no value as
+    profitable as the published $C=0.1$ row, let alone the sharp
+    catastrophic-to-profitable transition Section~\ref{sec:pamr-tuning}
+    describes. Unlike Table~\ref{tab:results-crisis}, this does not
+    reproduce within noise. Whatever script originally produced
+    Table~\ref{tab:pamr-sweep} is not preserved in this repository, so
+    the exact cause -- a different universe snapshot, a different
+    backtest entry point, or something else entirely -- could not be
+    identified before this paper went out. $C=1$ is still used going
+    forward (Section~\ref{sec:results}), both because it is the book's
+    own value rather than a searched one and because
+    Table~\ref{tab:results-full}'s $C=1$ result, on the full
+    2000-2026 window, does not depend on the disputed crisis-window
+    sweep at all. But Section~\ref{sec:pamr-tuning}'s specific
+    narrative -- the catastrophic-to-profitable flip at $C=0.1$, and the
+    claim that $C=1$ recovers most of that benefit -- should be read as
+    unverified against the current pipeline, not re-confirmed by it.
+    Reported here rather than quietly dropped, per this paper's own
+    standard for findings that do not resolve cleanly.
     \item \textbf{Strategy state resets at every DJIA reconstitution, not
     just for the tickers that actually changed.}
     \texttt{engine.run\_backtest\_segmented} (Section~\ref{sec:survivorship2})
