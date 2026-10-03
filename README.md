@@ -52,10 +52,15 @@ in [book/](book/).
     same US-equity beta. The universe grows as each ETF's inception date
     is reached rather than being fixed to today's survivors.
 - [run.py](run.py) — runs every strategy over the DJIA universe end to end
-  and writes wealth-curve plots to `outputs/`.
+  and writes wealth-curve plots to `outputs/djia/`.
 - [run_etf.py](run_etf.py) — the same backtest/plotting pipeline over the
-  ETF universe instead, for comparing results across two largely
-  uncorrelated asset sets.
+  ETF universe instead, writing to `outputs/etf/`, for comparing results
+  across two largely uncorrelated asset sets.
+- `outputs/` — generated plots only (gitignored, regenerated on each
+  run), one subfolder per universe. Each file name says what it shows:
+  `..._all_strategies.png` (every strategy, one plot), `..._steady_vs_aggressive.png`
+  (split by how concentrated a single-period bet gets), and
+  `..._per_strategy_grid.png` (one small subplot per strategy).
 
 ## Setup
 
@@ -87,8 +92,8 @@ python run.py
 
 Backtests every strategy over DJIA constituents from 2000-01-01 to
 2026-09-01, printing final wealth/APY/Sharpe/MDD/Calmar/t-test per strategy
-and saving wealth-curve plots to `outputs/` (gitignored, regenerated on
-each run). `ONS` is off by default — it replays its full history and solves
+and saving wealth-curve plots to `outputs/djia/` (gitignored, regenerated
+on each run). `ONS` is off by default — it replays its full history and solves
 a QP at every step, which is minutes at ~650 periods but tens of hours at
 ~6700; flip `INCLUDE_ONS` in `run.py` to include it anyway.
 
