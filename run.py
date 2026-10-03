@@ -16,7 +16,6 @@ from strategies.benchmarks.best_stock import BestStock
 from strategies.benchmarks.crp import CRP
 from strategies.follow_the_loser.anticor import Anticor
 from strategies.follow_the_loser.cwmr import CWMR
-from strategies.follow_the_loser.olmar import OLMAR
 from strategies.follow_the_loser.olmar2 import OLMAR2
 from strategies.follow_the_loser.pamr2 import PAMR2
 from strategies.follow_the_winner.eg import EG
@@ -55,7 +54,7 @@ LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 # short-horizon bets that paid off badly in this crash -- the two groups
 # need different axes to both be readable (see paper, Current Results).
 STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR", "OLMAR2"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2"]
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -90,7 +89,11 @@ def main() -> None:
         # value) is the one that actually works, so it's what's shown here.
         "PAMR2": lambda n, pr: PAMR2(n),
         "CWMR": lambda n, pr: CWMR(n),
-        "OLMAR": lambda n, pr: OLMAR(n),
+        # plain OLMAR is left out for the same reason: OLMAR2 (tuned
+        # alpha=0.3, Sec. anticor-olmar2-tuning) beats it on this
+        # universe (+1.75% vs -1.09% APY) -- showing both would just
+        # repeat the PAMR-family pattern of one variant winning and the
+        # other not, already covered there.
         "OLMAR2": lambda n, pr: OLMAR2(n),
     }
     if INCLUDE_ONS:
