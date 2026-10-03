@@ -21,6 +21,7 @@ from strategies.follow_the_loser.pamr2 import PAMR2
 from strategies.follow_the_winner.eg import EG
 from strategies.follow_the_winner.ons import ONS
 from strategies.follow_the_winner.up import UP
+from strategies.pattern_matching.corn import CORN
 
 # 2000-01-01 .. 2026-09-01: as broad a window as djia_universe's verified
 # reconstitution history covers, chosen so the result isn't a single
@@ -40,6 +41,17 @@ END = "2026-09-01"
 # default for that reason; flip to True to include it anyway.
 INCLUDE_ONS = False
 
+# CORN (strategies/pattern_matching/corn.py) also replays its full history
+# on every call, scanning for correlated past windows and solving a cvxpy
+# BCRP over whichever days match -- also O(n^2)-ish, but much cheaper per
+# step than ONS's QP. Measured directly, not assumed: 2.8s at n=179,
+# 6.2s at n=249 (29 assets, w=5) -- consistent with roughly quadratic
+# scaling, which would put the full ~6700-period window at a rough,
+# extrapolated estimate of over an hour, not measured directly at that
+# scale. Off by default for that reason; flip to True to include it
+# anyway.
+INCLUDE_CORN = False
+
 OUTPUT_DIR = "outputs/djia"
 PLOT_PATH = f"{OUTPUT_DIR}/djia_wealth_curves_all_strategies.png"
 GROUPED_PLOT_PATH = f"{OUTPUT_DIR}/djia_wealth_curves_steady_vs_aggressive.png"
@@ -54,7 +66,7 @@ LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 # short-horizon bets that paid off badly in this crash -- the two groups
 # need different axes to both be readable (see paper, Current Results).
 STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN"]
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -98,6 +110,8 @@ def main() -> None:
     }
     if INCLUDE_ONS:
         strategy_factories["ONS"] = lambda n, pr: ONS(n)
+    if INCLUDE_CORN:
+        strategy_factories["CORN"] = lambda n, pr: CORN(n)
 
     total_periods = sum(arr.shape[0] for arr in segment_arrays)
     print(f"{total_periods} periods across {len(segment_arrays)} DJIA reconstitution segments:")

@@ -20,8 +20,9 @@ in [book/](book/).
   `update(history)` is a pure function of the price-relative history up to
   `t-1` and returns the portfolio `b_t`. Subfolders follow the book's own
   taxonomy (Part II: Ch. 3 Benchmarks, Ch. 4 Follow the Winner, Ch. 5
-  Follow the Loser); `base.py` and `simplex.py` stay at the top level
-  since every category's strategies depend on one or both of them.
+  Follow the Loser, Ch. 6/8 Pattern Matching); `base.py` and `simplex.py`
+  stay at the top level since every category's strategies depend on one
+  or both of them.
   - `benchmarks/` — not adaptive, just a baseline to beat
     - `bah.py` — Buy-and-Hold (Ch. 3.1)
     - `best_stock.py` — hindsight-only upper bound, not a real strategy (Sec. 3.2)
@@ -37,6 +38,11 @@ in [book/](book/).
     - `cwmr.py` — Confidence Weighted Mean Reversion, CWMR-Var (Ch. 10)
     - `olmar.py`, `olmar2.py` — Online Moving Average Reversion, simple and
       exponential moving-average variants (Ch. 11)
+  - `pattern_matching/` — find historically similar market windows, bet
+    on what usually followed them
+    - `corn.py` — CORrelation-driven Nonparametric learning, the
+      single-expert CORN(w, rho) of Algorithm 8.1 (Ch. 8; uses `cvxpy`
+      for the BCRP step over the matched days)
   - `simplex.py` — shared closed-form simplex projection used by
     PAMR/CWMR/OLMAR
 - [universes/](universes/) — point-in-time asset universes, so a backtest
@@ -46,11 +52,13 @@ in [book/](book/).
     every reconstitution since then and the data-availability gaps that
     cause (documented per-ticker, with the reasoning for each).
   - `etf_universe.py` — one large, continuously-traded ETF per major
-    asset class (US equities, developed ex-US equities, EM equities,
-    REITs, long Treasuries, gold, broad commodities), so strategies trade
-    genuinely different risk factors instead of 28-30 variations on the
-    same US-equity beta. The universe grows as each ETF's inception date
-    is reached rather than being fixed to today's survivors.
+    asset class (US equities, long Treasuries, gold, broad commodities,
+    the US dollar), chosen after checking real correlations ruled out
+    more "obvious" choices like international or sector equities (paper,
+    Sec. etf-choice) — so strategies trade genuinely different risk
+    factors instead of 28-30 variations on the same US-equity beta. The
+    universe grows as each ETF's inception date is reached rather than
+    being fixed to today's survivors.
 - [run.py](run.py) — runs every strategy over the DJIA universe end to end
   and writes wealth-curve plots to `outputs/djia/`.
 - [run_etf.py](run_etf.py) — the same backtest/plotting pipeline over the
@@ -99,8 +107,13 @@ a QP at every step, which is minutes at ~650 periods but tens of hours at
 
 ## Status
 
-All of the book's core strategies are implemented and benchmarked on the
-DJIA universe, with results and methodology written up in `paper/main.tex`.
-The `etf-universe` branch adds a second, cross-asset-class universe (see
-`universes/etf_universe.py` and `run_etf.py`) to check whether results hold
-outside a basket of correlated US large caps.
+Benchmarks (Ch. 3), Follow the Winner (Ch. 4), Follow the Loser (Ch. 5),
+and the first Pattern Matching algorithm, CORN (Ch. 8), are implemented
+and benchmarked on both the DJIA universe and a second, cross-asset ETF
+universe (`universes/etf_universe.py`, `run_etf.py`) built to check
+whether results hold outside a basket of correlated US large caps —
+they mostly don't, which is itself a result (paper, Sec. etf-results).
+Results and methodology are written up in `paper/main.tex`. CORN-U/
+CORN-K (the book's multi-expert combinations of several CORN(w, rho)
+settings) and the remaining book chapters (Meta-Algorithms) are not yet
+implemented.
