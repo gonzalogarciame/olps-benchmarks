@@ -43,6 +43,13 @@ in [book/](book/).
     - `corn.py` — CORrelation-driven Nonparametric learning, the
       single-expert CORN(w, rho) of Algorithm 8.1 (Ch. 8; uses `cvxpy`
       for the BCRP step over the matched days)
+    - `corn_u.py`, `corn_k.py` — CORN-U and CORN-K (Algorithms 8.2/8.3):
+      combine many CORN(w, rho) experts weighted by their own running
+      wealth, uniformly (CORN-U) or restricted to the top K (CORN-K).
+      Unlike every other strategy here these keep real internal state
+      between calls rather than replaying from scratch each time — see
+      `corn_u.py`'s own docstring for why that's a deliberate, guarded
+      exception, not an inconsistency.
   - `simplex.py` — shared closed-form simplex projection used by
     PAMR/CWMR/OLMAR
 - [universes/](universes/) — point-in-time asset universes, so a backtest
@@ -108,12 +115,12 @@ a QP at every step, which is minutes at ~650 periods but tens of hours at
 ## Status
 
 Benchmarks (Ch. 3), Follow the Winner (Ch. 4), Follow the Loser (Ch. 5),
-and the first Pattern Matching algorithm, CORN (Ch. 8), are implemented
-and benchmarked on both the DJIA universe and a second, cross-asset ETF
+and the Pattern Matching family, CORN, CORN-U and CORN-K (Ch. 8), are
+implemented; the benchmarks run on both the DJIA universe and a second, cross-asset ETF
 universe (`universes/etf_universe.py`, `run_etf.py`) built to check
 whether results hold outside a basket of correlated US large caps —
 they mostly don't, which is itself a result (paper, Sec. etf-results).
-Results and methodology are written up in `paper/main.tex`. CORN-U/
-CORN-K (the book's multi-expert combinations of several CORN(w, rho)
-settings) and the remaining book chapters (Meta-Algorithms) are not yet
-implemented.
+Results and methodology are written up in `paper/main.tex`. CORN-U and
+CORN-K are implemented but not yet part of the `run.py`/`run_etf.py`
+benchmarks or the paper. The remaining book chapters (Meta-Algorithms)
+are not yet implemented.
