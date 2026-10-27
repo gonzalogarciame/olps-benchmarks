@@ -66,7 +66,12 @@ in [book/](book/).
     factors instead of 28-30 variations on the same US-equity beta. The
     universe grows as each ETF's inception date is reached rather than
     being fixed to today's survivors.
-- [run.py](run.py) — runs every strategy over the DJIA universe end to end
+- [walk_forward.py](walk_forward.py) — selects each strategy's parameter
+  every 1 January from past data only (expanding window, best Sharpe, first
+  3 years at the default), so no parameter is chosen with knowledge of the
+  period it is then used on. [grids.py](grids.py) holds the candidate values.
+- [run.py](run.py) — runs every strategy, with walk-forward
+  parameter selection, over the DJIA universe end to end
   and writes wealth-curve plots to `outputs/djia/`.
 - [run_etf.py](run_etf.py) — the same backtest/plotting pipeline over the
   ETF universe instead, writing to `outputs/etf/`, for comparing results

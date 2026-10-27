@@ -6,22 +6,20 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.ticker import FuncFormatter
 
 import universes.djia_universe as djia_universe
-from data import get_price_relatives
+from data import benchmark_wealth, get_price_relatives
 from engine import run_backtest_segmented
+from grids import EXPERTS, FIXED_SHARE_DEFAULT, FIXED_SHARE_GRID, GRIDS, SLOW
 from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
 from strategies.benchmarks.bah import BAH
 from strategies.benchmarks.best_stock import BestStock
 from strategies.benchmarks.crp import CRP
-from strategies.follow_the_loser.anticor import Anticor
-from strategies.follow_the_loser.cwmr import CWMR
-from strategies.follow_the_loser.olmar2 import OLMAR2
-from strategies.follow_the_loser.pamr2 import PAMR2
-from strategies.follow_the_winner.eg import EG
 from strategies.follow_the_winner.ons import ONS
 from strategies.follow_the_winner.up import UP
-from strategies.pattern_matching.corn import CORN
+from strategies.meta_algorithms.fixed_share import fixed_share_wealth
+from walk_forward import segmented_wealth, strategy_portfolios, walk_forward, walk_forward_all
 
 # 2000-01-01 .. 2026-09-01: as broad a window as djia_universe's verified
 # reconstitution history covers, chosen so the result isn't a single
@@ -47,9 +45,10 @@ INCLUDE_ONS = False
 # step than ONS's QP. Measured directly, not assumed: 2.8s at n=179,
 # 6.2s at n=249 (29 assets, w=5) -- consistent with roughly quadratic
 # scaling, which would put the full ~6700-period window at a rough,
-# extrapolated estimate of over an hour, not measured directly at that
-# scale. Off by default for that reason; flip to True to include it
-# anyway.
+# extrapolated estimate of over an hour per candidate, not measured
+# directly at that scale, and CORN, CORN-U and CORN-K have 12, 3 and 3
+# candidates each (grids.py). Off by default for that reason; flip to
+# True to include them anyway.
 INCLUDE_CORN = False
 
 OUTPUT_DIR = "outputs/djia"
@@ -65,8 +64,21 @@ LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 # stay close to each other and close to 1; the rest make aggressive,
 # short-horizon bets that paid off badly in this crash -- the two groups
 # need different axes to both be readable (see paper, Current Results).
-STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN"]
+STEADY_GROUP = ["BAH", "CRP", "UP", "EG", "SPY"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN", "CORN-U", "CORN-K", "FixedShare", "SPY"]
+
+# plain PAMR is run and reported, but PAMR2 is the one plotted: showing
+# whichever variant happened to win here would itself be a choice made
+# with hindsight
+PLOT_EXCLUDE = {"BestStock", "PAMR", "ExpertsEW"}
+
+# SPY is the S&P 500 total return, a buy-and-hold reference every strategy
+# is judged against, so it is drawn the same way everywhere
+SPY_STYLE = {"color": "black", "linestyle": ":", "linewidth": 1.5}
+
+
+def _style(name: str, linestyle) -> dict:
+    return SPY_STYLE if name == "SPY" else {"linestyle": linestyle}
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -88,51 +100,72 @@ def main() -> None:
     # any period), so prepend a date for that point too
     plot_dates = dates.insert(0, dates[0] - pd.Timedelta(days=1))
 
-    strategy_factories = {
-        "BAH": lambda n, pr: BAH(n),
-        "CRP": lambda n, pr: CRP(n),
-        "BestStock": lambda n, pr: BestStock(n, pr),
-        "UP": lambda n, pr: UP(n),
-        "EG": lambda n, pr: EG(n),
-        "Anticor": lambda n, pr: Anticor(n),
-        # plain PAMR and PAMR-1 are left out of this headline run -- both
-        # collapse the same way (Sec. ftl-pamr-tuning in the paper has the
-        # full comparison); PAMR2 (C=1.0, the book's own worked-example
-        # value) is the one that actually works, so it's what's shown here.
-        "PAMR2": lambda n, pr: PAMR2(n),
-        "CWMR": lambda n, pr: CWMR(n),
-        # plain OLMAR is left out for the same reason: OLMAR2 (tuned
-        # alpha=0.3, Sec. anticor-olmar2-tuning) beats it on this
-        # universe (+1.75% vs -1.09% APY) -- showing both would just
-        # repeat the PAMR-family pattern of one variant winning and the
-        # other not, already covered there.
-        "OLMAR2": lambda n, pr: OLMAR2(n),
+    fixed = {
+        "BAH": lambda n, p: BAH(n),
+        "CRP": lambda n, p: CRP(n),
+        "UP": lambda n, p: UP(n),
     }
     if INCLUDE_ONS:
-        strategy_factories["ONS"] = lambda n, pr: ONS(n)
-    if INCLUDE_CORN:
-        strategy_factories["CORN"] = lambda n, pr: CORN(n)
+        fixed["ONS"] = lambda n, p: ONS(n)
+    grids = {k: v for k, v in GRIDS.items() if INCLUDE_CORN or k not in SLOW}
 
     total_periods = sum(arr.shape[0] for arr in segment_arrays)
     print(f"{total_periods} periods across {len(segment_arrays)} DJIA reconstitution segments:")
     for seg_start, seg_end, tickers in segments_meta:
         print(f"  {seg_start} .. {seg_end}: {len(tickers)} assets")
 
-    wealths = {}
-    for name, factory in strategy_factories.items():
-        wealth = run_backtest_segmented(factory, segment_arrays)
-        t_stat, p_value = t_test(wealth)
-        print(
-            f"{name:10s} final wealth = {wealth[-1]:.4f}  APY = {apy(wealth):+.2%}  "
-            f"vol = {volatility(wealth):.2%}  Sharpe = {sharpe_ratio(wealth):.2f}  "
-            f"MDD = {max_drawdown(wealth):.2%}  Calmar = {calmar_ratio(wealth):.2f}  "
-            f"t = {t_stat:.2f} (p = {p_value:.3f})"
-        )
-        wealths[name] = wealth
+    # BestStock is a hindsight-only upper bound, not an expert, so it is
+    # not cached or combined
+    wealths = {
+        "BestStock": run_backtest_segmented(lambda n, pr: BestStock(n, pr), segment_arrays),
+        "SPY": benchmark_wealth("SPY", START, END, dates),
+    }
+    b_experts = {}
+    for name, factory in fixed.items():
+        b_experts[name] = strategy_portfolios("djia", name, None, factory, segment_arrays)
+        wealths[name] = segmented_wealth(b_experts[name], segment_arrays)
+    tuned, picks, default_b = walk_forward_all("djia", grids, segment_arrays, dates)
+    wealths.update(tuned)
+    b_experts.update(default_b)
+
+    experts = [b_experts[name] for name in EXPERTS + (["CORN"] if INCLUDE_CORN else [])]
+    candidates = [fixed_share_wealth(experts, segment_arrays, eta, alpha) for eta, alpha in FIXED_SHARE_GRID]
+    wealths["FixedShare"], fs_picks = walk_forward(
+        candidates, FIXED_SHARE_GRID.index(FIXED_SHARE_DEFAULT), dates
+    )
+    picks["FixedShare"] = {year: FIXED_SHARE_GRID[i] for year, i in fs_picks.items()}
+    wealths["ExpertsEW"] = fixed_share_wealth(experts, segment_arrays, 0.0, 0.0)
+
+    for name, wealth in wealths.items():
+        _report(name, wealth, apy(wealths["SPY"]))
+    for name, by_year in picks.items():
+        print(f"{name:10s} chosen by year: {by_year}")
 
     _plot_combined(wealths, plot_dates)
     _plot_grouped(wealths, plot_dates)
     _plot_grid(wealths, plot_dates)
+
+
+def _report(name: str, wealth, spy_apy: float) -> None:
+    t_stat, p_value = t_test(wealth)
+    print(
+        f"{name:10s} final wealth = {wealth[-1]:.4f}  APY = {apy(wealth):+.2%}  "
+        f"vol = {volatility(wealth):.2%}  Sharpe = {sharpe_ratio(wealth):.2f}  "
+        f"MDD = {max_drawdown(wealth):.2%}  Calmar = {calmar_ratio(wealth):.2f}  "
+        f"t = {t_stat:.2f} (p = {p_value:.3f})  vs SPY = {apy(wealth) - spy_apy:+.2%}"
+    )
+
+
+def _log_axis(ax) -> None:
+    # S is multiplicative, so equal vertical distances mean equal growth
+    # factors and a straight line is constant compounding; S = 1 (break-even)
+    # marks where a strategy is ahead of or behind its starting capital
+    ax.set_yscale("log")
+    ax.axhline(1.0, color="gray", linewidth=0.5, linestyle=":")
+    # plain numbers (0.1, not 1e-01) at 1, 2 and 5 of each decade
+    formatter = FuncFormatter(lambda v, _: f"{v:g}" if f"{v:.1e}"[0] in "125" else "")
+    ax.yaxis.set_major_formatter(formatter)
+    ax.yaxis.set_minor_formatter(formatter)
 
 
 def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
@@ -141,12 +174,12 @@ def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
         # BestStock is a hindsight-only upper bound (see strategies/best_stock.py),
         # not a real strategy, so it's left off the graph -- printed above for
         # reference, but not plotted alongside strategies that make causal decisions
-        if name != "BestStock":
-            ax.plot(plot_dates, wealth, label=name, linestyle=linestyle)
+        if name not in PLOT_EXCLUDE:
+            ax.plot(plot_dates, wealth, label=name, **_style(name, linestyle))
 
     ax.set_xlabel("date")
     ax.set_ylabel("cumulative wealth (log scale)")
-    ax.set_yscale("log")
+    _log_axis(ax)
     ax.set_title(f"OLPS strategies on DJIA constituents, {START} to {END}")
     ax.legend()
     fig.autofmt_xdate()
@@ -159,16 +192,17 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
     steady = [name for name in STEADY_GROUP if name in wealths]
     for name, linestyle in zip(steady, itertools.cycle(LINESTYLES)):
-        ax_steady.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
-    ax_steady.set_ylabel("cumulative wealth")
+        ax_steady.plot(plot_dates, wealths[name], label=name, **_style(name, linestyle))
+    ax_steady.set_ylabel("cumulative wealth (log scale)")
+    _log_axis(ax_steady)
     ax_steady.set_title("Steady: no concentrated single-period bets")
     ax_steady.legend()
 
     aggressive = [name for name in AGGRESSIVE_GROUP if name in wealths]
     for name, linestyle in zip(aggressive, itertools.cycle(LINESTYLES)):
-        ax_aggressive.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
+        ax_aggressive.plot(plot_dates, wealths[name], label=name, **_style(name, linestyle))
     ax_aggressive.set_ylabel("cumulative wealth (log scale)")
-    ax_aggressive.set_yscale("log")
+    _log_axis(ax_aggressive)
     ax_aggressive.set_title("Aggressive: large single-period rebalancing bets")
     ax_aggressive.set_xlabel("date")
     ax_aggressive.legend()
@@ -181,15 +215,15 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
 
 def _plot_grid(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
-    names = [name for name in wealths if name != "BestStock"]
+    names = [name for name in wealths if name not in PLOT_EXCLUDE | {"SPY"}]
     n_cols = math.ceil(math.sqrt(len(names)))
     n_rows = math.ceil(len(names) / n_cols)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(11, 3.2 * n_rows), sharex=True, sharey=True)
     axes_flat = axes.flat if hasattr(axes, "flat") else [axes]
     for ax, name in zip(axes_flat, names):
+        ax.plot(plot_dates, wealths["SPY"], color="gray", linestyle=":", linewidth=1)
         ax.plot(plot_dates, wealths[name])
-        ax.axhline(1.0, color="gray", linewidth=0.5, linestyle=":")
-        ax.set_yscale("log")
+        _log_axis(ax)
         ax.set_title(name)
         ax.tick_params(axis="x", labelrotation=45)
     for ax in list(axes_flat)[len(names):]:
