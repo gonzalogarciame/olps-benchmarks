@@ -28,7 +28,10 @@ that changed the scope of what came next. Those changes, and the reasoning
 behind them, are reported alongside the final design, not hidden behind it.
 Section~\ref{sec:formulation} fixes notation. Section~\ref{sec:process}
 is the core of the paper: a chronological account of the project's
-development. Section~\ref{sec:results} reports where things currently
+development, including how parameters are chosen without lookahead
+(Section~\ref{sec:walk-forward}), the pattern matching algorithms
+(Section~\ref{sec:corn}) and a combination of strategies
+(Section~\ref{sec:fixed-share}). Section~\ref{sec:results} reports where things currently
 stand, Section~\ref{sec:etf} cross-checks those results on a second,
 deliberately decorrelated universe, and Section~\ref{sec:limitations} is
 explicit about what remains open and why it was left that way.
@@ -279,6 +282,15 @@ the book defines it as -- it was removed from the plot entirely rather
 than kept as a labeled reference. It is still computed and printed to the
 console for context, but the graph now shows only strategies that decide
 under the same causal constraint.
+
+A later round changed the axes. The grouped plot used a linear axis for
+the steady strategies and a log axis for the others, so the slope of a
+line meant different things in the two panels. Both now use a log axis,
+where equal vertical distances are equal growth factors and a straight
+line is constant compounding. A dotted line marks $S=1$, the break-even
+point, and the tick labels are plain numbers (0.1, 0.5, 2, 10) instead of
+powers of ten. SPY (Section~\ref{sec:spy}) is drawn in black and dotted in
+every plot.
 
 \subsection{Evaluation Metrics}
 
@@ -736,6 +748,13 @@ sweep on the 2007-2009 crisis window, confirm on the independent
 2000-2026 window, and adopt whatever survives both rather than
 whatever merely wins the first.
 
+\textbf{Correction.} The confirmation step in this section does not remove
+the lookahead problem. Section~\ref{sec:walk-forward} explains why and
+describes what replaced it. The defaults this section produced ($w=12$,
+$\alpha=0.3$) have been reverted to $w=5$ and $\alpha=0.5$, and both
+strategies now choose their parameter by walk-forward. The tables below are
+kept as a record of the original procedure.
+
 \begin{table}[h]
 \centering
 \begin{tabular}{rrrrr}
@@ -822,6 +841,203 @@ from noise, and there is no second window to tell a real effect from
 overfitting even if one were visible. $\delta=1/8$ is left unchanged:
 the honest conclusion from one noisy, unconfirmable sweep is that there
 is no evidence to change it, not a new tuned value.
+
+\subsection{Choosing Parameters Without Lookahead}
+\label{sec:walk-forward}
+
+The two tuning sections above have a flaw that is easy to miss. Anticor's
+$w$ and OLMAR-2's $\alpha$ were swept on the 2007-2009 window and then
+confirmed on 2000-2026, and the values that survived both ($w=12$,
+$\alpha=0.3$) became the defaults. But 2000-2026 contains the crisis and
+every year after it, so picking those values meant knowing how each
+strategy would do in years it had not yet traded. An investor in 2003
+could not have chosen $w=12$ this way. The full-window results quoted for
+those two strategies ($+18.71\%$ for Anticor, $+1.75\%$ for OLMAR-2) are
+therefore too optimistic, and Section~\ref{sec:anticor-olmar2-tuning}
+should be read as a record of the mistake, not as the final method.
+
+The fix is to choose each parameter using only data from before the period
+where it is used. Every 1 January, each candidate value of a strategy's
+parameter is scored by its Sharpe ratio over all the data before that
+date, and the best one is used for that whole year. The first three years
+are traded with the strategy's default, because there is too little
+history to score anything. On the DJIA universe the first selection
+happens on 1 January 2003, and on the ETF universe on 1 January 2010. The
+window is expanding, so each selection sees the whole past. Wealth
+already earned is never recomputed: when the parameter changes, only later
+decisions use the new value.
+
+This does not require re-running every strategy at every selection date.
+A strategy's portfolio $b_t$ depends only on $x_1, \dots, x_{t-1}$, so the
+wealth path of a candidate up to a date $d$ is the same whether the
+simulation stops at $d$ or runs to the end of the sample. Each candidate
+is therefore simulated once over the whole sample. At date $d$ its Sharpe
+ratio is computed from the part of its path before $d$, and the chosen
+candidate's returns from $d$ onward are exactly what trading with that
+value from $d$ would have earned. To check this we ran the procedure twice
+on synthetic data, changing only the prices after a given date. Wealth and
+choices before that date came out identical, and only what followed
+differed.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+Strategy & Parameter & Candidates & Default \\
+\midrule
+EG & $\eta$ & 0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2 & 0.05 \\
+Anticor & $w$ & 3, 5, 8, 12, 20, 30 & 5 \\
+PAMR & $\epsilon$ & 0.1, 0.3, 0.5, 0.8, 1.0 & 0.5 \\
+PAMR-2 & $C$ & 0.01, 0.1, 1, 10, 100, 500 & 1 \\
+CWMR & $\phi$ & 0, 0.25, 0.5, 1, 1.64, 2.33 & 1.64 \\
+OLMAR-2 & $\alpha$ & 0.1, 0.3, 0.5, 0.7, 0.9 & 0.5 \\
+CORN & $(w,\rho)$ & $w \in \{3,5,7,10\}$, $\rho \in \{0,0.1,0.3\}$ & (5, 0.1) \\
+CORN-U & $\rho$ & 0, 0.1, 0.3 & 0.1 \\
+CORN-K & $K$ & 1, 3, 5 & 3 \\
+\bottomrule
+\end{tabular}
+\caption{Candidate values for each strategy's parameter. Defaults are the
+book's own values where it gives one. BAH, CRP and UP have nothing to
+tune, and ONS is left at its default because of its cost
+(Section~\ref{sec:ons}).}
+\label{tab:grids}
+\end{table}
+
+The grids were widened once. In a first run, EG, PAMR, PAMR-2 and CWMR
+picked a value at the edge of their grid in almost every year, which
+suggests the best value lies outside it, so the grids were extended in
+that direction. Doing this after seeing which values were chosen is a
+small leak of the same kind, because the range of candidates now reflects
+what worked. The change mattered: PAMR went from $-9.66\%$ to $+8.48\%$
+APY on the DJIA, and now picks $\epsilon=1.0$, again the largest value on
+offer. The limits of a grid affect the result as much as the selection
+rule does.
+
+Every strategy replays its history at each step, so one run takes time
+quadratic in the length of a segment. On the DJIA, where reconstitutions
+cut the 6,690 periods into 15 segments, one candidate takes minutes. On
+the ETF universe, a single unbroken segment of 4,906 periods, it takes
+much longer. The portfolios of each strategy and parameter value are
+therefore saved to disk and reused, keyed to the strategy code and the
+price data, so changing a grid only computes the new candidates. To
+support this the backtest engine now returns the portfolios
+$b_1, \dots, b_n$ themselves and computes wealth from them. Results are
+identical to the previous engine.
+
+\subsection{Pattern Matching: CORN, CORN-U and CORN-K}
+\label{sec:corn}
+
+The first pattern matching algorithm is CORN (Algorithm 8.1 of the book).
+At period $t$ it takes the latest $w$ price relative vectors and searches
+the past for earlier windows of the same length whose correlation with
+them is at least $\rho$. The days that followed those windows are
+collected, and $b_t$ is the best constant rebalanced portfolio over them,
+found by solving a convex program with \texttt{cvxpy}. The idea is that if
+the market recently moved as it did before some earlier episode, what came
+next then says something about now.
+
+We use $w=5$ and $\rho=0.1$. These are not tuned: they are the values the
+book holds fixed in its own sensitivity plots (Section 13.3.1, Figures
+13.3 and 13.4). The book recommends CORN-U precisely because one pair
+$(w,\rho)$ is sensitive to $w$, so there is no reason to treat a single
+pair as best. Before running on market data we checked the correlation
+computation against the book's worked example (Figure 8.1), and all six
+correlation signs match.
+
+CORN is expensive. We measured 2.8 seconds at 179 periods and 6.2 seconds
+at 249 periods on the 29-asset universe, which fits quadratic growth and
+would put one run over the whole DJIA window at more than an hour (an
+extrapolation, not a measurement). The grid in Table~\ref{tab:grids} has
+twelve CORN candidates, so the CORN family is off by default in both run
+scripts and enabled with a flag.
+
+CORN-U and CORN-K (Algorithms 8.2 and 8.3) combine many CORN experts.
+CORN-U runs one expert for each $w = 1, \dots, W$ at a fixed $\rho$ and
+weights each by the wealth it would have had trading alone. CORN-K uses a
+grid of $W \times P$ experts over $w$ and $\rho \in \{0, 1/P, \dots,
+(P-1)/P\}$ and gives weight only to the $K$ with the highest wealth. We
+use $W=10$ and $\rho=0.1$ for CORN-U, and $W=10$, $P=5$, $K=3$ for CORN-K.
+The book gives no recommended values for these, so they are a starting
+grid chosen to keep the cost manageable.
+
+These two break the rule that every strategy is a function of the history
+alone. Recomputing each expert's wealth from scratch at every period
+would cost cubic time in the number of periods, too slow even to measure,
+so they keep their experts' wealth between calls. To avoid depending
+silently on being called once per period, each call checks that the
+history is exactly one period longer than the last one processed, and
+otherwise replays everything from the start. We checked that the
+incremental path and a cold-start replay produce the same portfolio, and
+that skipping periods triggers the replay.
+
+On the first 150 periods of the DJIA's first segment, CORN, CORN-U and
+CORN-K ended with wealth 1.44, 1.39 and 1.13, against 0.99 for BAH. That
+is far too short to say anything about performance. The run only served to
+check that the pieces work and agree with each other. The full benchmarks
+have not been run, and the \texttt{cvxpy} solver reports ``solution may be
+inaccurate'' for some periods of CORN's portfolio step, which has not been
+investigated.
+
+\subsection{Combining the Strategies: Hedge with Fixed Share}
+\label{sec:fixed-share}
+
+The book's Meta-Algorithms chapter is about combining several strategies
+instead of choosing one. With eight strategies already running, the natural
+question is whether a combination does better than the best of them, and
+whether it can do so without knowing in advance which one that is.
+
+We use eight experts: BAH, CRP, UP, EG, Anticor, PAMR-2, CWMR and OLMAR-2,
+each at its default parameter. Best Stock is excluded because it uses
+hindsight, ONS because of its cost, and CORN unless it has been run. The
+combiner keeps a weight $q_{t,i}$ on each of the $K$ experts, starting
+uniform. The portfolio it plays is the weighted mix of the experts'
+portfolios, rebalanced every period:
+\[
+    b_t = \sum_{i=1}^{K} q_{t,i}\, b_{t,i}.
+\]
+After $x_t$ is revealed the weights are updated in two steps:
+\[
+    q_{t+1,i} \propto q_{t,i}\,(b_{t,i} \cdot x_t)^{\eta}, \qquad
+    q_{t+1} \leftarrow (1-\alpha)\, q_{t+1} + \frac{\alpha}{K}.
+\]
+The first step is Hedge: an expert gains weight in proportion to its
+return in the period. With $\eta=1$ and $\alpha=0$ the weight of each
+expert stays proportional to the wealth it would have had trading alone,
+which is the weighting CORN-U uses over its own experts. The second step
+is Fixed Share (Herbster and Warmuth, 1998). It moves a fraction $\alpha$
+of the weight back toward uniform every period, so an expert that did
+badly for a while can regain weight quickly when the market changes. Plain
+Hedge cannot do this, because a weight that has become tiny stays tiny.
+
+$\eta$ and $\alpha$ are chosen by the walk-forward procedure of
+Section~\ref{sec:walk-forward}, from $\eta \in \{0.5, 1, 2, 5\}$ and
+$\alpha \in \{0, 0.001, 0.01, 0.1\}$, with $(1, 0.01)$ as the starting
+value. This is cheap, because the experts' portfolios are already stored
+and only the weights are recomputed. As in the other strategies, the
+combiner starts over at each segment boundary. As a baseline we also
+report an equal-weight mix of the same experts ($\eta=0$, $\alpha=0$), to
+show whether adapting the weights adds anything over plain averaging.
+
+\subsection{Comparing Against the Market}
+\label{sec:spy}
+
+So far every comparison was between strategies, which leaves open whether
+any of them beats simply holding an index. We added SPY, the S\&P 500
+ETF, as a buy-and-hold reference. Its price comes from the same source as
+the other assets and includes dividends (the adjusted close), so it is a
+total-return series like the strategies.
+
+The comparison has to cover the same days. A segmented universe loses the
+first day of each segment, because the first price relative needs a
+previous price, and SPY skips those same days. The results tables get one
+extra column: the strategy's APY minus SPY's APY over those days. SPY is
+also drawn in every plot.
+
+There are two limits. MSCI World, the other index we considered, is left
+out: the ETF that tracks it (URTH) starts in 2012, so it would cover only
+the last 14 years of the 26-year DJIA window. And in the ETF universe SPY
+is one of the five assets, so beating SPY there means beating one of the
+strategy's own inputs.
 
 \section{Current Results}
 \label{sec:results}
@@ -1091,9 +1307,12 @@ rather than addressed immediately, each for a stated reason:
     numbers are correct under the definition actually implemented;
     whether to switch to the conventional relative definition is left
     open rather than changed silently alongside unrelated work.
-    \item \textbf{Remaining book chapters.} Pattern Matching,
-    Meta-Algorithms, and the proposed learned strategy in this paper's
-    own title are not yet implemented.
+    \item \textbf{Remaining book chapters.} Pattern Matching is implemented
+    (Section~\ref{sec:corn}), but its full benchmark has not been run.
+    Of the Meta-Algorithms chapter only a combination by Hedge with Fixed
+    Share exists (Section~\ref{sec:fixed-share}); the book's other
+    meta-algorithms, and a learned strategy beyond that, are not yet
+    implemented.
     \item \textbf{A real bug in \texttt{djia\_universe.segments()}, found
     while re-checking the Anticor/OLMAR-2 sweep (Section~\ref{sec:anticor-olmar2-tuning})
     against the ETF confirmation run.} The function skipped any
