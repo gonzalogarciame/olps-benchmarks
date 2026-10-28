@@ -21,10 +21,11 @@ CACHE_DIR = Path("cache")
 def _fingerprint(segments: list[np.ndarray]) -> str:
     # Cached portfolios are only valid for the same strategy code and the
     # same price data. meta_algorithms/ is left out of the code hash so
-    # adding a combiner does not invalidate hours of expert runs.
+    # adding a combiner does not invalidate hours of expert runs. corn_sig.py
+    # is left out for the same reason; delete cache/*/CORN-Sig* if it changes.
     h = hashlib.sha1()
     for path in sorted(Path("strategies").rglob("*.py")):
-        if "meta_algorithms" not in path.parts:
+        if "meta_algorithms" not in path.parts and path.name != "corn_sig.py":
             h.update(path.read_bytes())
     h.update(Path("engine.py").read_bytes())
     for segment in segments:

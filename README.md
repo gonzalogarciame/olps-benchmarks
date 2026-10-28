@@ -43,6 +43,9 @@ in [book/](book/).
     - `corn.py` — CORrelation-driven Nonparametric learning, the
       single-expert CORN(w, rho) of Algorithm 8.1 (Ch. 8; uses `cvxpy`
       for the BCRP step over the matched days)
+    - `corn_sig.py` — CORN with the correlation test replaced by the L2
+      distance between level-2 path signatures of the windows (truncated
+      Sig-W1 of Ni et al.); keeps the nearest fraction `q` of past windows
     - `corn_u.py`, `corn_k.py` — CORN-U and CORN-K (Algorithms 8.2/8.3):
       combine many CORN(w, rho) experts weighted by their own running
       wealth, uniformly (CORN-U) or restricted to the top K (CORN-K).

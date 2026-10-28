@@ -8,6 +8,7 @@ from strategies.follow_the_loser.pamr2 import PAMR2
 from strategies.follow_the_winner.eg import EG
 from strategies.pattern_matching.corn import CORN
 from strategies.pattern_matching.corn_k import CORNK
+from strategies.pattern_matching.corn_sig import CORNSig
 from strategies.pattern_matching.corn_u import CORNU
 
 # name -> (factory(n, p), candidate values of p, default). Defaults are the
@@ -26,11 +27,16 @@ GRIDS = {
         [(w, rho) for w in (3, 5, 7, 10) for rho in (0.0, 0.1, 0.3)],
         (5, 0.1),
     ),
+    "CORN-Sig": (
+        lambda n, p: CORNSig(n, w=p[0], q=p[1]),
+        [(w, q) for w in (3, 5, 7, 10) for q in (0.05, 0.1, 0.2)],
+        (5, 0.1),
+    ),
     "CORN-U": (lambda n, rho: CORNU(n, rho=rho), [0.0, 0.1, 0.3], 0.1),
     "CORN-K": (lambda n, K: CORNK(n, K=K), [1, 3, 5], 3),
 }
 
-SLOW = ["CORN", "CORN-U", "CORN-K"]
+SLOW = ["CORN", "CORN-Sig", "CORN-U", "CORN-K"]
 
 # experts combined by Hedge with Fixed Share (strategies/meta_algorithms/
 # fixed_share.py) -- every non-hindsight strategy at its default parameter;
