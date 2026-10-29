@@ -8,18 +8,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import FuncFormatter
 
+import experiments
 import universes.djia_universe as djia_universe
-from data import benchmark_wealth, get_price_relatives
-from engine import run_backtest_segmented
-from grids import EXPERTS, FIXED_SHARE_DEFAULT, FIXED_SHARE_GRID, GRIDS, SLOW
-from metrics import apy, calmar_ratio, max_drawdown, sharpe_ratio, t_test, volatility
-from strategies.benchmarks.bah import BAH
-from strategies.benchmarks.best_stock import BestStock
-from strategies.benchmarks.crp import CRP
-from strategies.follow_the_winner.ons import ONS
-from strategies.follow_the_winner.up import UP
-from strategies.meta_algorithms.fixed_share import fixed_share_wealth
-from walk_forward import segmented_wealth, strategy_portfolios, walk_forward, walk_forward_all
+from data import get_price_relatives
 
 # 2000-01-01 .. 2026-09-01: as broad a window as djia_universe's verified
 # reconstitution history covers, chosen so the result isn't a single
@@ -65,7 +56,7 @@ LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 # short-horizon bets that paid off badly in this crash -- the two groups
 # need different axes to both be readable (see paper, Current Results).
 STEADY_GROUP = ["BAH", "CRP", "UP", "EG", "SPY"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN", "CORN-U", "CORN-K", "FixedShare", "SPY"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN", "CORN-U", "CORN-K", "FixedShare", "PolicyExperts", "SPY"]
 
 # plain PAMR is run and reported, but PAMR2 is the one plotted: showing
 # whichever variant happened to win here would itself be a choice made
@@ -89,71 +80,28 @@ def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFr
     return df
 
 
+def _load_segments(segments_meta: list) -> list[pd.DataFrame]:
+    return [_load_segment(s, e, tickers) for s, e, tickers in segments_meta]
+
+
 def main() -> None:
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    segments_meta = djia_universe.segments(START, END)
-    segment_dfs = [_load_segment(s, e, tickers) for s, e, tickers in segments_meta]
-    segment_arrays = [df.values for df in segment_dfs]
-
-    dates = pd.DatetimeIndex([]).append([df.index for df in segment_dfs])
-    # wealth has one more point than the combined periods (S_0 = 1 before
-    # any period), so prepend a date for that point too
-    plot_dates = dates.insert(0, dates[0] - pd.Timedelta(days=1))
-
-    fixed = {
-        "BAH": lambda n, p: BAH(n),
-        "CRP": lambda n, p: CRP(n),
-        "UP": lambda n, p: UP(n),
-    }
-    if INCLUDE_ONS:
-        fixed["ONS"] = lambda n, p: ONS(n)
-    grids = {k: v for k, v in GRIDS.items() if INCLUDE_CORN or k not in SLOW}
-
-    total_periods = sum(arr.shape[0] for arr in segment_arrays)
-    print(f"{total_periods} periods across {len(segment_arrays)} DJIA reconstitution segments:")
-    for seg_start, seg_end, tickers in segments_meta:
-        print(f"  {seg_start} .. {seg_end}: {len(tickers)} assets")
-
-    # BestStock is a hindsight-only upper bound, not an expert, so it is
-    # not cached or combined
-    wealths = {
-        "BestStock": run_backtest_segmented(lambda n, pr: BestStock(n, pr), segment_arrays),
-        "SPY": benchmark_wealth("SPY", START, END, dates),
-    }
-    b_experts = {}
-    for name, factory in fixed.items():
-        b_experts[name] = strategy_portfolios("djia", name, None, factory, segment_arrays)
-        wealths[name] = segmented_wealth(b_experts[name], segment_arrays)
-    tuned, picks, default_b = walk_forward_all("djia", grids, segment_arrays, dates)
-    wealths.update(tuned)
-    b_experts.update(default_b)
-
-    experts = [b_experts[name] for name in EXPERTS + (["CORN"] if INCLUDE_CORN else [])]
-    candidates = [fixed_share_wealth(experts, segment_arrays, eta, alpha) for eta, alpha in FIXED_SHARE_GRID]
-    wealths["FixedShare"], fs_picks = walk_forward(
-        candidates, FIXED_SHARE_GRID.index(FIXED_SHARE_DEFAULT), dates
+    args = experiments.parse_args()
+    universe = experiments.Universe(
+        "djia", START, END, djia_universe.segments(START, END), _load_segments, INCLUDE_ONS, INCLUDE_CORN
     )
-    picks["FixedShare"] = {year: FIXED_SHARE_GRID[i] for year, i in fs_picks.items()}
-    wealths["ExpertsEW"] = fixed_share_wealth(experts, segment_arrays, 0.0, 0.0)
+    if args.list:
+        experiments.print_status(universe)
+        return
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    wealths, plot_dates = experiments.update(universe, args.only, args.force, args.no_run)
 
-    for name, wealth in wealths.items():
-        _report(name, wealth, apy(wealths["SPY"]))
-    for name, by_year in picks.items():
-        print(f"{name:10s} chosen by year: {by_year}")
-
-    _plot_combined(wealths, plot_dates)
+    if args.plot:
+        chosen = {n: w for n, w in wealths.items() if n in args.plot or n == "SPY"}
+        _plot_combined(chosen, plot_dates, PLOT_PATH.replace(".png", "_custom.png"), exclude=set())
+        return
+    _plot_combined(wealths, plot_dates, PLOT_PATH, PLOT_EXCLUDE)
     _plot_grouped(wealths, plot_dates)
     _plot_grid(wealths, plot_dates)
-
-
-def _report(name: str, wealth, spy_apy: float) -> None:
-    t_stat, p_value = t_test(wealth)
-    print(
-        f"{name:10s} final wealth = {wealth[-1]:.4f}  APY = {apy(wealth):+.2%}  "
-        f"vol = {volatility(wealth):.2%}  Sharpe = {sharpe_ratio(wealth):.2f}  "
-        f"MDD = {max_drawdown(wealth):.2%}  Calmar = {calmar_ratio(wealth):.2f}  "
-        f"t = {t_stat:.2f} (p = {p_value:.3f})  vs SPY = {apy(wealth) - spy_apy:+.2%}"
-    )
 
 
 def _log_axis(ax) -> None:
@@ -168,13 +116,13 @@ def _log_axis(ax) -> None:
     ax.yaxis.set_minor_formatter(formatter)
 
 
-def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
+def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex, path: str, exclude: set) -> None:
     fig, ax = plt.subplots()
     for (name, wealth), linestyle in zip(wealths.items(), itertools.cycle(LINESTYLES)):
         # BestStock is a hindsight-only upper bound (see strategies/best_stock.py),
         # not a real strategy, so it's left off the graph -- printed above for
         # reference, but not plotted alongside strategies that make causal decisions
-        if name not in PLOT_EXCLUDE:
+        if name not in exclude:
             ax.plot(plot_dates, wealth, label=name, **_style(name, linestyle))
 
     ax.set_xlabel("date")
@@ -183,8 +131,8 @@ def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
     ax.set_title(f"OLPS strategies on DJIA constituents, {START} to {END}")
     ax.legend()
     fig.autofmt_xdate()
-    fig.savefig(PLOT_PATH)
-    print(f"saved plot to {PLOT_PATH}")
+    fig.savefig(path)
+    print(f"saved plot to {path}")
 
 
 def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:

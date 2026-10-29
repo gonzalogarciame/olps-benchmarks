@@ -110,15 +110,32 @@ b_t = strategy.get_portfolio(price_relatives.values[:10])
 ## Running the benchmark
 
 ```bash
-python run.py
+python run.py                         # DJIA, all strategies that are on by default
+python run_etf.py                     # the same on the ETF universe
+python run.py --only Anticor CORN-Sig # just these (works for the slow ones too)
+python run.py --list                  # which strategies are stored, outdated or missing
+python run.py --force                 # recompute even if stored results are current
 ```
 
 Backtests every strategy over DJIA constituents from 2000-01-01 to
 2026-09-01, printing final wealth/APY/Sharpe/MDD/Calmar/t-test per strategy
-and saving wealth-curve plots to `outputs/djia/` (gitignored, regenerated
-on each run). `ONS` is off by default â€” it replays its full history and solves
-a QP at every step, which is minutes at ~650 periods but tens of hours at
-~6700; flip `INCLUDE_ONS` in `run.py` to include it anyway.
+and saving wealth-curve plots to `outputs/djia/` (gitignored).
+
+Each finished strategy is written to `results/<universe>/`:
+
+- `wealth.csv` — one wealth curve per strategy (and per PolicyExperts seed)
+- `metrics.csv` — the table printed by the run
+- `picks.csv` — the parameter chosen each year by the walk-forward selection
+- `keys.csv` — a hash of the code, grid and window each column was made
+  with
+
+A run recomputes a strategy only if its hash changed or it is missing, so
+re-running with nothing changed reads the CSVs, without downloading prices,
+and redraws the plots. `--only` also ignores `INCLUDE_ONS` / `INCLUDE_CORN`,
+so a slow strategy can be run on its own and picked up by later full runs.
+The expensive per-parameter portfolios are cached separately in `cache/`.
+`ONS` is off by default — it replays its full history and solves a QP at
+every step, which is minutes at ~650 periods but tens of hours at ~6700.
 
 ## Status
 
