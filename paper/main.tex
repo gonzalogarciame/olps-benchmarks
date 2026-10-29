@@ -892,6 +892,7 @@ PAMR-2 & $C$ & 0.01, 0.1, 1, 10, 100, 500 & 1 \\
 CWMR & $\phi$ & 0, 0.25, 0.5, 1, 1.64, 2.33 & 1.64 \\
 OLMAR-2 & $\alpha$ & 0.1, 0.3, 0.5, 0.7, 0.9 & 0.5 \\
 CORN & $(w,\rho)$ & $w \in \{3,5,7,10\}$, $\rho \in \{0,0.1,0.3\}$ & (5, 0.1) \\
+CORN-Sig & $(w,q)$ & $w \in \{3,5,7,10\}$, $q \in \{0.05,0.1,0.2\}$ & (5, 0.1) \\
 CORN-U & $\rho$ & 0, 0.1, 0.3 & 0.1 \\
 CORN-K & $K$ & 1, 3, 5 & 3 \\
 \bottomrule
@@ -978,6 +979,39 @@ have not been run, and the \texttt{cvxpy} solver reports ``solution may be
 inaccurate'' for some periods of CORN's portfolio step, which has not been
 investigated.
 
+\subsection{CORN-Sig: Matching Windows by Path Signature}
+\label{sec:corn-sig}
+
+CORN decides which past windows are similar with a single number, the
+correlation of the two windows. Correlation ignores the order of the days
+inside a window and compares only how the entries move together. CORN-Sig
+keeps the rest of CORN and replaces this test with a distance between
+path signatures, which do record the order.
+
+A window of $w$ price relative vectors is read as a path: the cumulative
+sum of the log relatives, with a time coordinate added so that the
+signature can tell which day came first. The signature of this path,
+truncated at level 2, is the feature vector of the window. Level 1 is the
+total increment of each coordinate. Level 2 holds the iterated integrals
+of every pair of coordinates, which measure which asset moved first and by
+how much. The distance between two windows is the L2 distance between
+their feature vectors. This is the truncated Sig-$W_1$ metric of Ni et
+al.\ (2021) applied to two windows seen as single paths. Wasserstein
+distance only enters through that definition, since each window is one
+path and not a distribution of paths.
+
+A distance has no natural threshold the way a correlation does, so the
+parameter $\rho$ is replaced by a fraction $q$. The $q$ share of earlier
+windows closest to the latest one is kept, and at least one. From there it
+is CORN again: the day after each kept window is collected and $b_t$ is
+the best constant rebalanced portfolio over those days. The grid in
+Table~\ref{tab:grids} has the same shape as CORN's, with
+$w \in \{3,5,7,10\}$ and $q \in \{0.05, 0.1, 0.2\}$, and $(5, 0.1)$ as the
+starting value. The signature code is left out of the cache fingerprint
+so that adding it did not invalidate the stored CORN runs. If
+\texttt{corn\_sig.py} changes, its cached portfolios have to be deleted by
+hand.
+
 \subsection{Combining the Strategies: Hedge with Fixed Share}
 \label{sec:fixed-share}
 
@@ -1018,6 +1052,47 @@ combiner starts over at each segment boundary. As a baseline we also
 report an equal-weight mix of the same experts ($\eta=0$, $\alpha=0$), to
 show whether adapting the weights adds anything over plain averaging.
 
+\subsection{A Learned Combiner: PolicyExperts}
+\label{sec:policy}
+
+Hedge with Fixed Share adjusts the weights with a fixed rule. We also
+tried a combiner that learns the rule from the experts' own history. It
+uses the same eight experts at their default parameters. At period $t$ it
+plays $b_t = \sum_i q_{t,i}\, b_{t,i}$ as before, but the weights come from
+a small policy:
+\[
+    q_{t,i} = \mathrm{softmax}_i\!\left(\theta^\top \phi_{t,i} + c_i\right).
+\]
+The vector $\phi_{t,i}$ describes expert $i$ over the last $L=60$ periods
+by three numbers: the volatility of its log returns, its drawdown in log
+wealth, and its log wealth relative to BAH. Each feature is standardized
+across the experts in that period, so the scale of the universe does not
+matter. The policy has only $3+K$ parameters: one weight vector $\theta$
+shared by all experts and a bias $c_i$ for each.
+
+The parameters are fitted to maximize the average of $\log(q_t \cdot r_t)$,
+where $r_{t,i}$ is the gross return of expert $i$. In reinforcement
+learning terms this is a policy gradient, but a simple one. The weights
+$q_t$ do not change what the experts earn in the next period, so no
+sampling is needed to estimate the gradient. It is the exact gradient of
+the log return through the softmax, computed on a minibatch of 1,024 past
+periods and followed with Adam (300 steps, learning rate 0.02). The fit is
+repeated every 1 January on all the periods before it, as in the
+walk-forward procedure of Section~\ref{sec:walk-forward}. The first three
+years use equal weights, and each fit starts from the previous year's
+parameters. Nothing after the refit date enters the fit.
+
+We set the optimizer settings on synthetic experts, one of them slightly
+better than the others, and not on market data. A small L2 penalty
+($10^{-3}$) kept the weights close to equal and hid that difference, so
+the final fit has none. Different seeds change only the starting $\theta$
+and the minibatches, so we run five and report the portfolio built from
+the average of their weights. The spread of the five seeds on their own
+is reported next to it, since a result that depends on the seed would not
+mean much. Unlike the Fixed Share combiner, this one does not start over
+at segment boundaries: it only needs each expert's return in every period,
+and those chain across segments even when the asset columns change.
+
 \subsection{Comparing Against the Market}
 \label{sec:spy}
 
@@ -1038,6 +1113,50 @@ out: the ETF that tracks it (URTH) starts in 2012, so it would cover only
 the last 14 years of the 26-year DJIA window. And in the ETF universe SPY
 is one of the five assets, so beating SPY there means beating one of the
 strategy's own inputs.
+
+\subsection{Running Strategies One at a Time and Storing Results}
+\label{sec:storing}
+
+A full run of every strategy takes hours, and until now any change meant
+repeating all of it. Two changes avoid this. Both are in
+\texttt{experiments.py}, which \texttt{run.py} and \texttt{run\_etf.py}
+now share.
+
+The first is that any strategy can be run alone, with
+\texttt{--only}, for example \texttt{--only Anticor CORN-Sig}. This also
+works for the strategies that are off by default because of their cost
+(ONS and the CORN family): naming one runs it. The combiners need their
+experts' portfolios, so running one alone computes any expert that is
+missing, at its default parameter only and not over its whole grid.
+
+The second is that each finished strategy is written to
+\texttt{results/<universe>/}. The files are \texttt{wealth.csv} with one
+wealth curve per strategy and per PolicyExperts seed,
+\texttt{metrics.csv} with the table of the run, \texttt{picks.csv} with
+the parameter chosen in each year, and \texttt{keys.csv}. The last one holds
+a hash for every curve, built from the strategy code, its grid, the
+engine, the walk-forward code and the date window. A run recomputes a
+strategy only when its hash has changed or it is missing, and saves it as
+soon as it finishes, so a long run that fails part of the way keeps what
+it already did. When nothing needs computing the run reads the files and
+redraws the plots without downloading prices. The combiners and
+\texttt{corn\_sig.py} are hashed only into the strategies that use them,
+so editing a combiner does not invalidate the experts.
+
+This sits on top of the portfolio cache described in
+Section~\ref{sec:walk-forward}. The cache holds the slow part, the
+portfolios $b_1, \dots, b_n$ of one strategy with one parameter value. The
+stored results hold the finished curve, which also depends on the
+parameter selection or the combination. Deleting the results costs
+little; deleting the cache costs hours. The date window and constituents
+are part of the hash but the price data is not, so a stored result is not
+invalidated if the data provider later revises adjusted prices. The
+option \texttt{--force} recomputes a strategy anyway.
+
+Plots can be drawn from the stored results alone with \texttt{--no-run}.
+With \texttt{--plot} followed by strategy names, a single chart of just
+those strategies and SPY is drawn into a separate file, and it includes
+variants that the standard figures leave out, such as plain PAMR.
 
 \section{Current Results}
 \label{sec:results}
@@ -1308,11 +1427,12 @@ rather than addressed immediately, each for a stated reason:
     whether to switch to the conventional relative definition is left
     open rather than changed silently alongside unrelated work.
     \item \textbf{Remaining book chapters.} Pattern Matching is implemented
-    (Section~\ref{sec:corn}), but its full benchmark has not been run.
-    Of the Meta-Algorithms chapter only a combination by Hedge with Fixed
-    Share exists (Section~\ref{sec:fixed-share}); the book's other
-    meta-algorithms, and a learned strategy beyond that, are not yet
-    implemented.
+    (Sections~\ref{sec:corn} and~\ref{sec:corn-sig}), but its full
+    benchmark has not been run. Of the Meta-Algorithms chapter we have a
+    combination by Hedge with Fixed Share (Section~\ref{sec:fixed-share})
+    and a learned combiner (Section~\ref{sec:policy}); the book's other
+    meta-algorithms are not implemented. PAMR-1 and OLMAR-1 are
+    implemented but not part of the benchmark runs.
     \item \textbf{A real bug in \texttt{djia\_universe.segments()}, found
     while re-checking the Anticor/OLMAR-2 sweep (Section~\ref{sec:anticor-olmar2-tuning})
     against the ETF confirmation run.} The function skipped any
