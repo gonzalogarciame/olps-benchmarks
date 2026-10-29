@@ -43,6 +43,8 @@ SLOW = ["CORN", "CORN-Sig", "CORN-U", "CORN-K"]
 # CORN is added only when INCLUDE_CORN is on
 EXPERTS = ["BAH", "CRP", "UP", "EG", "Anticor", "PAMR2", "CWMR", "OLMAR2"]
 
+POLICY_SEEDS = [0, 1, 2, 3, 4]
+
 # (eta, alpha); eta=1 is the Bayesian mixture, alpha=0 plain Hedge
 FIXED_SHARE_GRID = [(eta, alpha) for eta in (0.5, 1.0, 2.0, 5.0) for alpha in (0.0, 0.001, 0.01, 0.1)]
 FIXED_SHARE_DEFAULT = (1.0, 0.01)
