@@ -1361,6 +1361,86 @@ nearly six times PAMR-2's, significant at $p=0.001$. Both headline
 results, not just PAMR's, turn out to depend on getting a parameter the
 book does not specify right, rather than on the book's formula alone at
 whatever value happened to be guessed first.
+
+\subsection{Walk-Forward Results on the DJIA}
+\label{sec:wf-djia}
+
+The tables above use one parameter value per strategy, chosen once. This
+subsection reports the procedure of Section~\ref{sec:walk-forward}
+instead: each January the parameter is chosen from the past alone, and the
+combiners of Sections~\ref{sec:fixed-share} and~\ref{sec:policy} are
+included. The window is the same 26.7 years, and SPY is added as the
+reference of Section~\ref{sec:spy}. The CORN family is not in this table
+because it has not been run on this window.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & $t$ (p) & APY $-$ SPY \\
+\midrule
+BAH                    & 10.1616 & $+$9.13\% & 18.55\% & 0.28 & 2.90 (0.002) & $+$0.69\% \\
+CRP                    & 12.2067 & $+$9.88\% & 19.50\% & 0.30 & 2.99 (0.001) & $+$1.45\% \\
+UP                     & 12.2184 & $+$9.89\% & 19.46\% & 0.30 & 3.00 (0.001) & $+$1.45\% \\
+EG                     & 12.1346 & $+$9.86\% & 19.49\% & 0.30 & 2.99 (0.001) & $+$1.42\% \\
+Anticor                & 68.6938 & $+$17.27\% & 37.09\% & 0.36 & 3.14 (0.001) & $+$8.84\% \\
+PAMR                   & 8.6849 & $+$8.48\% & 22.56\% & 0.20 & 2.44 (0.007) & $+$0.05\% \\
+PAMR-2                 & 16.2527 & $+$11.07\% & 27.07\% & 0.26 & 2.70 (0.003) & $+$2.64\% \\
+CWMR                   & 0.0224 & $-$13.33\% & 43.78\% & $-$0.40 & $-$0.49 (0.689) & $-$21.77\% \\
+OLMAR-2                & 0.6869 & $-$1.40\% & 47.93\% & $-$0.11 & 1.13 (0.129) & $-$9.84\% \\
+Fixed Share            & 7.8293 & $+$8.06\% & 22.30\% & 0.18 & 2.37 (0.009) & $-$0.38\% \\
+Equal-weight experts   & 5.1922 & $+$6.40\% & 26.25\% & 0.09 & 1.90 (0.029) & $-$2.03\% \\
+PolicyExperts          & 8.8056 & $+$8.54\% & 29.19\% & 0.16 & 2.20 (0.014) & $+$0.10\% \\
+SPY                    & 8.5846 & $+$8.44\% & 19.28\% & 0.23 & 2.66 (0.004) & $+$0.00\% \\
+\midrule
+Best Stock$^*$         & 11385.9358 & $+$42.17\% & 29.13\% & 1.31 & 6.97 (0.000) & $+$33.73\% \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Walk-forward results, 2000-01-01 to 2026-09-01, reconstitution-tracked
+Dow Jones universe. Parameters are chosen each January by Sharpe ratio over
+the past, with the starting value of Table~\ref{tab:grids} for the first
+three years. The last column is APY minus SPY's APY over the same days.
+$^*$Best Stock is a hindsight-only upper bound. Drawdown and Calmar
+figures are in \texttt{results/djia/metrics.csv}; they use the absolute
+drawdown noted in Table~\ref{tab:results-full} and are left out here.}
+\label{tab:wf-djia}
+\end{table}
+
+Selecting the parameter without looking ahead keeps the earlier picture.
+Anticor is still the best strategy, at $68.69\times$ and $+17.27\%$ APY,
+8.8 points above SPY. The procedure picks $w=12$ in 23 of its 24
+selection years, the value found earlier by tuning on the crisis window.
+The final wealth is lower than the $94.94\times$ of
+Table~\ref{tab:results-full}, which used $w=12$ from the first day. The
+difference is what it costs not to know the best $w$ in advance. PAMR-2
+reaches $16.25\times$ and chooses $C=0.1$ in 18 years and $C=1$ in 6.
+Section~\ref{sec:pamr-tuning} avoided $C=0.1$ as untrustworthy, but the
+selected path ends within 0.5\% of the $16.17\times$ obtained at $C=1$.
+CWMR and OLMAR-2 still lose money, ending at $0.02\times$ and
+$0.69\times$.
+
+The combiners do not do better than their best experts. Fixed Share ends
+at $7.83\times$ ($+8.06\%$ APY), 0.38 points below SPY, and the
+equal-weight mix of the same experts is lower at $5.19\times$. Both are
+below CRP, UP and EG, which are in the mix and end near $12\times$. The
+procedure chose $\eta=5$ and $\alpha=0$ in every year, the largest $\eta$
+and no sharing, which is the setting closest to following whichever expert
+is ahead. We did not test why the mix falls short of its best members. The
+two losing experts, CWMR and OLMAR-2, are part of every mix and are one
+likely reason.
+
+PolicyExperts ends at $8.81\times$ ($+8.54\%$ APY), 0.10 points above SPY
+and 0.48 above Fixed Share. The five seeds on their own range from
+$+6.43\%$ to $+9.31\%$ APY, with mean $+8.38\%$ and standard deviation
+$1.04\%$ (the per-seed curves are in \texttt{wealth.csv}). The spread
+of 2.9 points is wider than every gap between a combiner and SPY in the
+table, so a single seed could not distinguish PolicyExperts from Fixed
+Share or from the index. Averaging the weights of the five seeds gave a result slightly
+above the mean seed, but we do not read an advantage into that.
+
+\subsection{Known Limitations}
 \label{sec:limitations}
 
 Several gaps were identified during this work and deliberately left open
