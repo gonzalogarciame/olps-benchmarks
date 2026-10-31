@@ -1,89 +1,77 @@
 # olps-benchmarks
 
-Online Portfolio Selection (OLPS) algorithms and benchmarks, implemented
-following *Online Portfolio Selection: Principles and Algorithms* (Li & Hoi).
-Written up as a TFG in [paper/main.tex](paper/main.tex); the book itself is
-in [book/](book/).
+Online Portfolio Selection (OLPS) algorithms, implemented from
+*Online Portfolio Selection: Principles and Algorithms* (Li & Hoi) and
+tested on two universes: the Dow Jones constituents since 2000 and a
+cross-asset ETF basket since 2007. The work is written up as a TFG in
+[paper/main.tex](paper/main.tex); the book is in [book/](book/).
 
-## Structure
+What sets the benchmark apart from a plain re-implementation:
 
-- [data.py](data.py) — downloads adjusted close prices (via `yfinance`) and
-  converts them into price relatives `x[t,i] = price[t,i] / price[t-1,i]`.
-- [engine.py](engine.py) — runs a strategy over a price-relative history
-  (`run_backtest`) and tracks cumulative wealth `S_t`; `run_backtest_segmented`
-  chains backtests across a universe that changes composition over time
-  (e.g. index reconstitution), resetting strategy state at each boundary.
-- [metrics.py](metrics.py) — APY, volatility, Sharpe, max drawdown, Calmar,
-  and a t-test against the null that the strategy isn't profitable.
-- [strategies/](strategies/) — one file per algorithm, each implementing
-  `strategies/base.py`'s `Strategy` interface (Algorithm A.1): stateless,
-  `update(history)` is a pure function of the price-relative history up to
-  `t-1` and returns the portfolio `b_t`. Subfolders follow the book's own
-  taxonomy (Part II: Ch. 3 Benchmarks, Ch. 4 Follow the Winner, Ch. 5
-  Follow the Loser, Ch. 6/8 Pattern Matching); `base.py` and `simplex.py`
-  stay at the top level since every category's strategies depend on one
-  or both of them.
-  - `benchmarks/` — not adaptive, just a baseline to beat
-    - `bah.py` — Buy-and-Hold (Ch. 3.1)
-    - `best_stock.py` — hindsight-only upper bound, not a real strategy (Sec. 3.2)
-    - `crp.py` — Constant Rebalanced Portfolio (Ch. 3.3)
-  - `follow_the_winner/` — shift weight toward recent outperformers
-    - `up.py` — Universal Portfolio (Cover, 1991)
-    - `eg.py` — Exponential Gradient (Helmbold et al., 1998)
-    - `ons.py` — Online Newton Step via FTRL (Ch. 4.4; uses `cvxpy`)
-  - `follow_the_loser/` — bet on mean reversion instead
-    - `anticor.py` — Anticorrelation (Borodin, El-Yaniv & Gogan, 2004; Sec. 5.2)
-    - `pamr.py`, `pamr1.py`, `pamr2.py` — Passive Aggressive Mean Reversion
-      and its capped/quadratic-slack variants (Ch. 9)
-    - `cwmr.py` — Confidence Weighted Mean Reversion, CWMR-Var (Ch. 10)
-    - `olmar.py`, `olmar2.py` — Online Moving Average Reversion, simple and
-      exponential moving-average variants (Ch. 11)
-  - `pattern_matching/` — find historically similar market windows, bet
-    on what usually followed them
-    - `corn.py` — CORrelation-driven Nonparametric learning, the
-      single-expert CORN(w, rho) of Algorithm 8.1 (Ch. 8; uses `cvxpy`
-      for the BCRP step over the matched days)
-    - `corn_sig.py` — CORN with the correlation test replaced by the L2
-      distance between level-2 path signatures of the windows (truncated
-      Sig-W1 of Ni et al.); keeps the nearest fraction `q` of past windows
-    - `corn_u.py`, `corn_k.py` — CORN-U and CORN-K (Algorithms 8.2/8.3):
-      combine many CORN(w, rho) experts weighted by their own running
-      wealth, uniformly (CORN-U) or restricted to the top K (CORN-K).
-      Unlike every other strategy here these keep real internal state
-      between calls rather than replaying from scratch each time — see
-      `corn_u.py`'s own docstring for why that's a deliberate, guarded
-      exception, not an inconsistency.
-  - `simplex.py` — shared closed-form simplex projection used by
-    PAMR/CWMR/OLMAR
-- [universes/](universes/) — point-in-time asset universes, so a backtest
-  tracks real membership changes instead of assuming today's constituents
-  always existed.
-  - `djia_universe.py` — DJIA constituents from 2000-01-01 onward, with
-    every reconstitution since then and the data-availability gaps that
-    cause (documented per-ticker, with the reasoning for each).
-  - `etf_universe.py` — one large, continuously-traded ETF per major
-    asset class (US equities, long Treasuries, gold, broad commodities,
-    the US dollar), chosen after checking real correlations ruled out
-    more "obvious" choices like international or sector equities (paper,
-    Sec. etf-choice) — so strategies trade genuinely different risk
-    factors instead of 28-30 variations on the same US-equity beta. The
-    universe grows as each ETF's inception date is reached rather than
-    being fixed to today's survivors.
-- [walk_forward.py](walk_forward.py) — selects each strategy's parameter
-  every 1 January from past data only (expanding window, best Sharpe, first
-  3 years at the default), so no parameter is chosen with knowledge of the
-  period it is then used on. [grids.py](grids.py) holds the candidate values.
-- [run.py](run.py) — runs every strategy, with walk-forward
-  parameter selection, over the DJIA universe end to end
-  and writes wealth-curve plots to `outputs/djia/`.
-- [run_etf.py](run_etf.py) — the same backtest/plotting pipeline over the
-  ETF universe instead, writing to `outputs/etf/`, for comparing results
-  across two largely uncorrelated asset sets.
-- `outputs/` — generated plots only (gitignored, regenerated on each
-  run), one subfolder per universe. Each file name says what it shows:
-  `..._all_strategies.png` (every strategy, one plot), `..._steady_vs_aggressive.png`
-  (split by how concentrated a single-period bet gets), and
-  `..._per_strategy_grid.png` (one small subplot per strategy).
+- **No lookahead.** Each strategy's parameter is chosen every January from
+  past data only (walk-forward), never from the period it is used on.
+- **Point-in-time universes.** The DJIA backtest follows the real index
+  reconstitutions instead of assuming today's constituents always existed.
+- **A market reference.** Every result is compared with SPY (S&P 500 total
+  return) over the same days.
+- **Run one strategy at a time.** Each finished strategy is stored as CSV,
+  so a change never means repeating a multi-hour run.
+
+## Results at a glance
+
+Walk-forward results. APY is the annualized return and Sharpe is
+(APY - 4%) / volatility. DJIA is 2000-01-01 to 2026-09-01, ETF is
+2007-03-01 to 2026-09-01.
+
+| Strategy | DJIA APY | DJIA Sharpe | ETF APY | ETF Sharpe |
+|---|---:|---:|---:|---:|
+| BAH | +9.1% | 0.28 | +7.0% | 0.34 |
+| CRP | +9.9% | 0.30 | +6.6% | 0.34 |
+| UP | +9.9% | 0.30 | +6.7% | 0.35 |
+| EG | +9.9% | 0.30 | +6.6% | 0.33 |
+| Anticor | +17.3% | 0.36 | +7.0% | 0.17 |
+| PAMR | +8.5% | 0.20 | +13.2% | 0.51 |
+| PAMR-2 | +11.1% | 0.26 | +13.8% | 0.64 |
+| CWMR | -13.3% | -0.40 | +13.3% | 0.51 |
+| OLMAR-2 | -1.4% | -0.11 | +17.7% | 0.73 |
+| Fixed Share | +8.1% | 0.18 | +14.8% | 0.70 |
+| PolicyExperts | +8.5% | 0.16 | +15.9% | 0.75 |
+| SPY (reference) | +8.4% | 0.23 | +11.1% | 0.36 |
+
+The ranking depends on the universe: mean-reversion strategies that lose on
+the DJIA (CWMR, OLMAR-2) are among the best on the ETFs. PolicyExperts
+depends on its random seed (about one point of APY on the DJIA), so one run
+says little. The CORN family and ONS have not been run yet. Full tables,
+drawdowns and discussion are in the paper; the numbers above come from
+`results/*/metrics.csv`.
+
+## Strategies
+
+| Family | Strategy | Source | File |
+|---|---|---|---|
+| Benchmarks | Buy-and-Hold (BAH) | Ch. 3.1 | [bah.py](strategies/benchmarks/bah.py) |
+| | Best Stock (hindsight upper bound, not a real strategy) | Ch. 3.2 | [best_stock.py](strategies/benchmarks/best_stock.py) |
+| | Constant Rebalanced Portfolio (CRP) | Ch. 3.3 | [crp.py](strategies/benchmarks/crp.py) |
+| Follow the winner | Universal Portfolio (UP) | Ch. 4 | [up.py](strategies/follow_the_winner/up.py) |
+| | Exponential Gradient (EG) | Ch. 4 | [eg.py](strategies/follow_the_winner/eg.py) |
+| | Online Newton Step (ONS) | Ch. 4.4 | [ons.py](strategies/follow_the_winner/ons.py) |
+| Follow the loser | Anticor | Ch. 5.2 | [anticor.py](strategies/follow_the_loser/anticor.py) |
+| | PAMR, PAMR-1, PAMR-2 | Ch. 9 | [pamr.py](strategies/follow_the_loser/pamr.py), [pamr1.py](strategies/follow_the_loser/pamr1.py), [pamr2.py](strategies/follow_the_loser/pamr2.py) |
+| | CWMR (Var) | Ch. 10 | [cwmr.py](strategies/follow_the_loser/cwmr.py) |
+| | OLMAR, OLMAR-2 | Ch. 11 | [olmar.py](strategies/follow_the_loser/olmar.py), [olmar2.py](strategies/follow_the_loser/olmar2.py) |
+| Pattern matching | CORN | Ch. 8, Alg. 8.1 | [corn.py](strategies/pattern_matching/corn.py) |
+| | CORN-Sig (signature distance instead of correlation) | Ni et al. 2021 | [corn_sig.py](strategies/pattern_matching/corn_sig.py) |
+| | CORN-U, CORN-K | Ch. 8, Alg. 8.2 / 8.3 | [corn_u.py](strategies/pattern_matching/corn_u.py), [corn_k.py](strategies/pattern_matching/corn_k.py) |
+| Meta-algorithms | Hedge with Fixed Share over the experts | Herbster & Warmuth 1998 | [fixed_share.py](strategies/meta_algorithms/fixed_share.py) |
+| | PolicyExperts (learned softmax policy over the experts) | this project | [policy_gradient.py](strategies/meta_algorithms/policy_gradient.py) |
+
+Every strategy implements the `Strategy` interface in
+[strategies/base.py](strategies/base.py): `update(history)` is a pure
+function of the price relatives up to `t-1` and returns the portfolio `b_t`.
+CORN-U and CORN-K are the one deliberate exception: they keep their experts'
+wealth between calls, with a guard that replays from the start if called out
+of order. PAMR-1 and OLMAR (version 1) are implemented but not part of the
+benchmark runs.
 
 ## Setup
 
@@ -93,7 +81,76 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Example
+## Running the benchmark
+
+```bash
+python run.py                          # DJIA, every strategy that is on by default
+python run_etf.py                      # the same on the ETF universe
+python run.py --only Anticor CORN-Sig  # just these, including the slow ones
+python run.py --list                   # which strategies are stored, outdated or missing
+python run.py --force                  # recompute even if stored results are current
+python run.py --no-run                 # compute nothing, redraw plots from stored results
+python run.py --plot BAH Anticor       # one custom chart of just these (and SPY)
+```
+
+`run_etf.py` takes the same options. `--only` accepts any strategy name,
+including ONS and the CORN family, which are off by default because of their
+cost (ONS replays its history and solves a QP at every step: minutes at ~650
+periods, tens of hours at ~6700). The combiners (`FixedShare`, `ExpertsEW`,
+`PolicyExperts`) need their experts' portfolios and compute any that are
+missing at the default parameter.
+
+Plots go to `outputs/<universe>/` (gitignored): `..._all_strategies.png`,
+`..._steady_vs_aggressive.png` and `..._per_strategy_grid.png`. `--plot`
+writes `..._all_strategies_custom.png` so the standard figures are not
+overwritten.
+
+## How results are stored
+
+Two layers, for two different costs:
+
+| Folder | Holds | Used for |
+|---|---|---|
+| `cache/` (gitignored) | the portfolios `b_1..b_n` of one strategy with one parameter value, the slow part | skipping the minutes-to-hours simulation |
+| `results/<universe>/` | the finished wealth curves and tables | reading results and plotting without recomputing |
+
+The files in `results/<universe>/`:
+
+- `wealth.csv`: one wealth curve per strategy (and per PolicyExperts seed)
+- `metrics.csv`: final wealth, APY, volatility, Sharpe, drawdown, Calmar, t-test and APY versus SPY
+- `picks.csv`: the parameter chosen each year by the walk-forward selection
+- `keys.csv`: a hash of the code, grid and date window behind each column
+
+A run recomputes a strategy only if its hash changed or it is missing, and
+saves it as soon as it finishes. When nothing needs computing it reads the
+CSVs and does not download prices. The price data itself is not hashed, so
+use `--force` if you suspect the data provider revised adjusted prices.
+
+## Project layout
+
+```
+data.py            prices from yfinance, converted to price relatives
+engine.py          backtest of one strategy; chains segments of a changing universe
+metrics.py         APY, volatility, Sharpe, drawdown, Calmar, t-test
+walk_forward.py    yearly parameter selection from past data; portfolio cache
+grids.py           candidate parameter values and defaults per strategy
+experiments.py     computes one strategy at a time and stores it in results/
+run.py             DJIA benchmark and plots
+run_etf.py         ETF benchmark and plots
+strategies/        one file per algorithm, grouped as in the table above
+universes/         djia_universe.py (point-in-time Dow roster), etf_universe.py
+results/           stored CSV results (tracked)
+paper/main.tex     the written report
+```
+
+The DJIA universe (`universes/djia_universe.py`) follows every
+reconstitution since 2000 and documents the data gaps each one causes. The
+ETF universe (`universes/etf_universe.py`) holds one large ETF per asset
+class (US equities, long Treasuries, gold, commodities, the US dollar),
+chosen after checking correlations, so strategies trade different risk
+factors and not variations of one US-equity beta.
+
+## Using a strategy directly
 
 ```python
 from data import get_price_relatives
@@ -107,45 +164,12 @@ strategy = CRP(n_assets=price_relatives.shape[1])
 b_t = strategy.get_portfolio(price_relatives.values[:10])
 ```
 
-## Running the benchmark
-
-```bash
-python run.py                         # DJIA, all strategies that are on by default
-python run_etf.py                     # the same on the ETF universe
-python run.py --only Anticor CORN-Sig # just these (works for the slow ones too)
-python run.py --list                  # which strategies are stored, outdated or missing
-python run.py --force                 # recompute even if stored results are current
-```
-
-Backtests every strategy over DJIA constituents from 2000-01-01 to
-2026-09-01, printing final wealth/APY/Sharpe/MDD/Calmar/t-test per strategy
-and saving wealth-curve plots to `outputs/djia/` (gitignored).
-
-Each finished strategy is written to `results/<universe>/`:
-
-- `wealth.csv` � one wealth curve per strategy (and per PolicyExperts seed)
-- `metrics.csv` � the table printed by the run
-- `picks.csv` � the parameter chosen each year by the walk-forward selection
-- `keys.csv` � a hash of the code, grid and window each column was made
-  with
-
-A run recomputes a strategy only if its hash changed or it is missing, so
-re-running with nothing changed reads the CSVs, without downloading prices,
-and redraws the plots. `--only` also ignores `INCLUDE_ONS` / `INCLUDE_CORN`,
-so a slow strategy can be run on its own and picked up by later full runs.
-The expensive per-parameter portfolios are cached separately in `cache/`.
-`ONS` is off by default � it replays its full history and solves a QP at
-every step, which is minutes at ~650 periods but tens of hours at ~6700.
-
 ## Status
 
-Benchmarks (Ch. 3), Follow the Winner (Ch. 4), Follow the Loser (Ch. 5),
-and the Pattern Matching family, CORN, CORN-U and CORN-K (Ch. 8), are
-implemented; the benchmarks run on both the DJIA universe and a second, cross-asset ETF
-universe (`universes/etf_universe.py`, `run_etf.py`) built to check
-whether results hold outside a basket of correlated US large caps —
-they mostly don't, which is itself a result (paper, Sec. etf-results).
-Results and methodology are written up in `paper/main.tex`. CORN-U and
-CORN-K are implemented but not yet part of the `run.py`/`run_etf.py`
-benchmarks or the paper. The remaining book chapters (Meta-Algorithms)
-are not yet implemented.
+Implemented: the benchmarks, Follow the Winner, Follow the Loser, Pattern
+Matching (CORN, CORN-Sig, CORN-U, CORN-K) and two combiners over the
+experts. Walk-forward results are stored and written up for the default
+strategy set on both universes.
+
+Not done yet: the walk-forward benchmark of ONS and the CORN family, the
+book's other meta-algorithms, and a test suite.
