@@ -1847,6 +1847,94 @@ property of these algorithms, but a property of the specific
 correlation and reversion structure of US large-cap equities, exactly
 the question Section~\ref{sec:etf} set out to check.
 
+\subsection{Walk-Forward Results on the ETF Universe}
+\label{sec:wf-etf}
+
+Table~\ref{tab:wf-etf} applies the walk-forward procedure and the
+combiners to the ETF universe: 4,906 periods from 2007-03-01 to
+2026-09-01, with the first selection in 2010. SPY is one of the five
+assets here, so Best Stock is SPY itself and its row is identical. Beating
+SPY therefore means beating one of the strategy's own inputs
+(Section~\ref{sec:spy}). The CORN family is not in the table because it
+has not been run.
+
+\begin{table}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrr}
+\toprule
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & $t$ (p) & APY $-$ SPY \\
+\midrule
+BAH                    & 3.7207 & $+$6.98\% & 8.72\% & 0.34 & 3.61 (0.000) & $-$4.15\% \\
+CRP                    & 3.4620 & $+$6.59\% & 7.60\% & 0.34 & 3.87 (0.000) & $-$4.55\% \\
+UP                     & 3.5120 & $+$6.67\% & 7.70\% & 0.35 & 3.87 (0.000) & $-$4.47\% \\
+EG                     & 3.4440 & $+$6.56\% & 7.69\% & 0.33 & 3.81 (0.000) & $-$4.57\% \\
+Anticor                & 3.7055 & $+$6.96\% & 17.50\% & 0.17 & 2.08 (0.019) & $-$4.17\% \\
+PAMR                   & 11.2350 & $+$13.23\% & 18.10\% & 0.51 & 3.43 (0.000) & $+$2.10\% \\
+PAMR-2                 & 12.4428 & $+$13.83\% & 15.27\% & 0.64 & 4.08 (0.000) & $+$2.69\% \\
+CWMR                   & 11.4152 & $+$13.32\% & 18.14\% & 0.51 & 3.44 (0.000) & $+$2.19\% \\
+OLMAR-2                & 23.7556 & $+$17.67\% & 18.63\% & 0.73 & 4.26 (0.000) & $+$6.54\% \\
+Fixed Share            & 14.5851 & $+$14.76\% & 15.29\% & 0.70 & 4.31 (0.000) & $+$3.63\% \\
+Equal-weight experts   & 5.7499 & $+$9.40\% & 9.79\% & 0.55 & 4.27 (0.000) & $-$1.73\% \\
+PolicyExperts          & 17.5727 & $+$15.86\% & 15.82\% & 0.75 & 4.46 (0.000) & $+$4.73\% \\
+SPY                    & 7.8057 & $+$11.13\% & 19.63\% & 0.36 & 2.81 (0.003) & $+$0.00\% \\
+\midrule
+Best Stock$^*$         & 7.8057 & $+$11.13\% & 19.63\% & 0.36 & 2.81 (0.003) & $+$0.00\% \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Walk-forward results, 2007-03-01 to 2026-09-01, cross-asset ETF
+universe. Same procedure and columns as Table~\ref{tab:wf-djia}.
+$^*$Best Stock is a hindsight-only upper bound; here it coincides with
+SPY. Drawdown and Calmar figures are in
+\texttt{results/etf/metrics.csv}.}
+\label{tab:wf-etf}
+\end{table}
+
+The mean-reversion strategies all beat SPY. OLMAR-2 reaches $23.76\times$
+($+17.67\%$ APY, 6.5 points above SPY), followed by PAMR-2 at
+$12.44\times$, CWMR at $11.42\times$ and PAMR at $11.24\times$. BAH, CRP,
+UP and EG end between $3.4\times$ and $3.7\times$, 4.1 to 4.6 points below
+SPY, but with 7.6--8.7\% volatility against SPY's 19.6\%. Their Sharpe
+ratios of 0.33--0.35 are close to SPY's 0.36. Anticor ends at $3.71\times$
+with a Sharpe ratio of 0.17.
+
+Two results differ from Table~\ref{tab:results-etf}. PAMR-2 is no longer
+the worst strategy: the walk-forward selection picks $C=100$ in 12 years
+and $C=500$ in 5, which cap the step far less than $C=1$ does. That
+agrees with Table~\ref{tab:etf-pamr}, where capping hurt on this universe,
+and means the earlier ranking of PAMR-2 as the worst came from fixing
+$C=1$. Anticor, which picks $w=3$ in 13 of 17 years, ends well below the
+$6.27\times$ that Table~\ref{tab:results-etf} reports for the fixed $w=5$.
+Choosing by past Sharpe ratio does not guarantee doing better than a fixed
+default. Several selections also sit at the edge of their grid: PAMR-2 at
+the largest $C$, CWMR at $\phi=2.33$ in 15 of 17 years, and EG at both
+ends. As with the first run of the grids (Section~\ref{sec:walk-forward}),
+the best values may lie outside what we tried, and we did not test it.
+
+The combiners do better here than on the DJIA. Fixed Share ends at
+$14.59\times$ ($+14.76\%$ APY, Sharpe 0.70, 3.6 points above SPY), and the
+equal-weight mix at $5.75\times$. PolicyExperts ends at $17.57\times$
+($+15.86\%$) with a Sharpe ratio of 0.75, the highest in the table and
+just above OLMAR-2's 0.73. OLMAR-2 still has the higher final wealth, so
+neither combiner beats its best expert on that measure; both are ahead of
+every other expert. Fixed Share again chose $\eta=5$ and $\alpha=0$,
+in 16 of 17 years, with $\eta=2$ in the other.
+
+The five PolicyExperts seeds range from $+15.21\%$ to $+16.43\%$ APY,
+with mean $+15.83\%$ and standard deviation $0.49\%$. All five finish
+above Fixed Share and more than 4 points above SPY, so here the seed does
+not change the conclusion. The margin over Fixed Share is small next to the
+spread, though: the weakest seed is 0.45 points ahead, the mean 1.07.
+
+The contrast with Section~\ref{sec:wf-djia} is the same one this section
+keeps finding. The combiner code is unchanged, but on the DJIA both
+combiners finish behind Anticor, PAMR-2 and the CRP/UP/EG group, and here
+they finish ahead of everything but OLMAR-2. The experts differ between
+the two universes: four mean-reversion strategies are profitable here,
+while on the DJIA two of them lose money. We expect that to explain much of the
+difference, but did not isolate it.
+
 \section{Conclusion}
 
 The value of this project so far is not only the algorithms implemented,
@@ -1906,5 +1994,19 @@ inversion this complete, rather than the single universe that would
 have made for a tidier narrative, is the point: a learned strategy
 judged only on DJIA-like correlated equities would be judged on a
 narrower question than it should be.
+
+The latest additions concern how results are measured more than which
+algorithms exist. Parameters are now chosen year by year from the past
+alone (Section~\ref{sec:walk-forward}), SPY is the reference
+(Section~\ref{sec:spy}), and two ways of combining the strategies were
+tried (Sections~\ref{sec:fixed-share} and~\ref{sec:policy}). The outcome
+depends on the universe again. On the DJIA neither combiner beats the best
+single strategy, or even the CRP/UP/EG group, while on the ETF universe both
+finish ahead of every strategy except OLMAR-2, and PolicyExperts has the
+highest Sharpe ratio. The learned combiner also depends on its random seed
+by about a point of APY on the DJIA, so a single run says little.
+Results are now stored per strategy and can be rerun one at a time
+(Section~\ref{sec:storing}). The CORN family and ONS are implemented but
+their walk-forward benchmark has not been run.
 
 \end{document}
