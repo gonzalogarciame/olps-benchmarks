@@ -72,8 +72,18 @@ class CORN(Strategy):
         b = cp.Variable(self.n_assets)
         objective = cp.Maximize(cp.sum(cp.log(similar_days @ b)))
         constraints = [b >= 0, cp.sum(b) == 1]
-        cp.Problem(objective, constraints).solve()
-        # same interior-point noise ONS's projection clips (strategies/
-        # follow_the_winner/ons.py) -- tiny negative entries on what
-        # should be exact zeros.
-        return np.maximum(b.value, 0.0)
+        problem = cp.Problem(objective, constraints)
+        try:
+            problem.solve()
+            # same interior-point noise ONS's projection clips (strategies/
+            # follow_the_winner/ons.py) -- tiny negative entries on what
+            # should be exact zeros.
+            return np.maximum(b.value, 0.0)
+        except cp.error.SolverError:
+            # Clarabel gives up on a few degenerate similar-day sets (many
+            # near-identical days); SCS is slower but converges on them.
+            problem.solve(solver=cp.SCS)
+            if b.value is None:
+                return self.initial_portfolio()
+            b = np.maximum(b.value, 0.0)
+            return b / b.sum()
