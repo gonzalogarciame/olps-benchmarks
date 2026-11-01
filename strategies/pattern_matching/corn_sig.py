@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import cvxpy as cp
 import numpy as np
 
 from strategies.pattern_matching.corn import CORN
@@ -40,6 +41,20 @@ class CORNSig(CORN):
         k = max(1, int(np.ceil(self._q * len(past))))
         nearest = np.argsort(dist, kind="stable")[:k]
         return self._bcrp(history[nearest + w])
+
+    def _bcrp(self, similar_days: np.ndarray) -> np.ndarray:
+        # Clarabel gives up on some long, ill-conditioned sets of matched
+        # days (the q-nearest set can be over a thousand days); SCS is less
+        # exact but always returns, and keeps the run from dying hours in.
+        try:
+            return super()._bcrp(similar_days)
+        except cp.error.SolverError:
+            b = cp.Variable(self.n_assets)
+            cp.Problem(cp.Maximize(cp.sum(cp.log(similar_days @ b))), [b >= 0, cp.sum(b) == 1]).solve(solver=cp.SCS)
+            if b.value is None:
+                return self.initial_portfolio()
+            b = np.maximum(b.value, 0.0)
+            return b / b.sum()
 
     def _windows(self, logx: np.ndarray) -> np.ndarray:
         w = self._w

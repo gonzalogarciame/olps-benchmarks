@@ -4,6 +4,11 @@ import itertools
 import math
 import os
 
+# One BLAS thread per process. These matrices are tiny, and the default of one
+# thread per core makes each process reserve gigabytes, so parallel --only
+# runs run out of memory. Must be set before numpy is imported.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import FuncFormatter

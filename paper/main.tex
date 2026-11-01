@@ -1007,7 +1007,11 @@ is CORN again: the day after each kept window is collected and $b_t$ is
 the best constant rebalanced portfolio over those days. The grid in
 Table~\ref{tab:grids} has the same shape as CORN's, with
 $w \in \{3,5,7,10\}$ and $q \in \{0.05, 0.1, 0.2\}$, and $(5, 0.1)$ as the
-starting value. The signature code is left out of the cache fingerprint
+starting value. The set of matched days can run to over a thousand
+periods, and on some of them the default solver (Clarabel) fails outright
+in the best-constant-portfolio step. CORN-Sig then retries that step with
+SCS, which is less exact but always returns, so a run does not stop hours
+in. The signature code is left out of the cache fingerprint
 so that adding it did not invalidate the stored CORN runs. If
 \texttt{corn\_sig.py} changes, its cached portfolios have to be deleted by
 hand.
@@ -1144,7 +1148,10 @@ redraws the plots without downloading prices. The combiners and
 so editing a combiner does not invalidate the experts. Several strategies
 can be run at the same time in separate processes. Saving takes a lock on
 the results folder and replaces each file in one step, so the runs do not
-overwrite each other's columns.
+overwrite each other's columns. Each process also limits itself to one BLAS
+thread. With the default of one per core, a process reserved about 3 GB of
+memory while using a tenth of that, and ten runs together exhausted the
+machine's memory.
 
 This sits on top of the portfolio cache described in
 Section~\ref{sec:walk-forward}. The cache holds the slow part, the
