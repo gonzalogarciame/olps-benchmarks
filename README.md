@@ -100,6 +100,11 @@ periods, tens of hours at ~6700). The combiners (`FixedShare`, `ExpertsEW`,
 `PolicyExperts`) need their experts' portfolios and compute any that are
 missing at the default parameter.
 
+Several `--only` runs can go at the same time, one per terminal: saving is
+locked and files are replaced atomically, so they do not overwrite each
+other's results. Start them a few seconds apart, since each process needs a
+few hundred MB while it imports `cvxpy`.
+
 Plots go to `outputs/<universe>/` (gitignored): `..._all_strategies.png`,
 `..._steady_vs_aggressive.png` and `..._per_strategy_grid.png`. `--plot`
 writes `..._all_strategies_custom.png` so the standard figures are not

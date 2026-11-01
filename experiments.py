@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -138,9 +140,35 @@ def compute(u: Universe, name: str) -> tuple[np.ndarray, dict | None, dict[str, 
     return S, None, {f"{SEED_PREFIX}{s}": w for s, w in zip(POLICY_SEEDS, by_seed)}
 
 
+@contextmanager
+def _lock(directory: Path):
+    # runs of different strategies can go in parallel; each one's save is a
+    # read-merge-write of the same CSVs, so it must not interleave
+    path = directory / ".lock"
+    directory.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL))
+            break
+        except FileExistsError:
+            try:
+                if time.time() - path.stat().st_mtime > 60:  # left by a run that was killed
+                    path.unlink()
+            except FileNotFoundError:
+                pass
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        path.unlink(missing_ok=True)
+
+
 class Store:
     def __init__(self, universe: str):
         self.dir = RESULTS_DIR / universe
+        self.load()
+
+    def load(self) -> None:
         wealth, keys, picks = self.dir / "wealth.csv", self.dir / "keys.csv", self.dir / "picks.csv"
         self.wealth = pd.read_csv(wealth, index_col="date", parse_dates=True) if wealth.exists() else pd.DataFrame()
         self.keys = pd.read_csv(keys, index_col="column")["key"].to_dict() if keys.exists() else {}
@@ -150,26 +178,33 @@ class Store:
         return name in self.wealth.columns and self.keys.get(name) == k
 
     def put(self, name, wealth, picks, extra, k, index: pd.DatetimeIndex) -> None:
-        if len(self.wealth) and not self.wealth.index.equals(index):
-            print("stored results cover different dates; discarding them")
-            self.wealth, self.keys = pd.DataFrame(), {}
-            self.picks = self.picks.iloc[0:0]
-        if not len(self.wealth):
-            self.wealth = pd.DataFrame(index=index)
-        for column, w in {name: wealth, **extra}.items():
-            self.wealth[column] = w
-            self.keys[column] = k
-        self.picks = self.picks[self.picks["strategy"] != name]
-        if picks:
-            rows = pd.DataFrame({"strategy": name, "year": list(picks), "param": [repr(p) for p in picks.values()]})
-            self.picks = pd.concat([self.picks, rows], ignore_index=True)
-        self.save()
+        with _lock(self.dir):
+            self.load()
+            if len(self.wealth) and not self.wealth.index.equals(index):
+                print("stored results cover different dates; discarding them")
+                self.wealth, self.keys = pd.DataFrame(), {}
+                self.picks = self.picks.iloc[0:0]
+            if not len(self.wealth):
+                self.wealth = pd.DataFrame(index=index)
+            for column, w in {name: wealth, **extra}.items():
+                self.wealth[column] = w
+                self.keys[column] = k
+            self.picks = self.picks[self.picks["strategy"] != name]
+            if picks:
+                rows = pd.DataFrame({"strategy": name, "year": list(picks), "param": [repr(p) for p in picks.values()]})
+                self.picks = pd.concat([self.picks, rows], ignore_index=True)
+            self.save()
 
     def save(self) -> None:
-        self.dir.mkdir(parents=True, exist_ok=True)
-        self.wealth.to_csv(self.dir / "wealth.csv", index_label="date")
-        pd.Series(self.keys, name="key").to_csv(self.dir / "keys.csv", index_label="column")
-        self.picks.to_csv(self.dir / "picks.csv", index=False)
+        # write then rename, so a run reading at the same moment never sees a half-written file
+        for filename, write in (
+            ("wealth.csv", lambda p: self.wealth.to_csv(p, index_label="date")),
+            ("keys.csv", lambda p: pd.Series(self.keys, name="key").to_csv(p, index_label="column")),
+            ("picks.csv", lambda p: self.picks.to_csv(p, index=False)),
+        ):
+            tmp = self.dir / (filename + ".tmp")
+            write(tmp)
+            os.replace(tmp, self.dir / filename)
 
 
 def metrics_row(wealth: np.ndarray, spy_apy: float) -> dict:

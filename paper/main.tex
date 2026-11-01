@@ -1141,7 +1141,10 @@ soon as it finishes, so a long run that fails part of the way keeps what
 it already did. When nothing needs computing the run reads the files and
 redraws the plots without downloading prices. The combiners and
 \texttt{corn\_sig.py} are hashed only into the strategies that use them,
-so editing a combiner does not invalidate the experts.
+so editing a combiner does not invalidate the experts. Several strategies
+can be run at the same time in separate processes. Saving takes a lock on
+the results folder and replaces each file in one step, so the runs do not
+overwrite each other's columns.
 
 This sits on top of the portfolio cache described in
 Section~\ref{sec:walk-forward}. The cache holds the slow part, the
