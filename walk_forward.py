@@ -18,14 +18,25 @@ from strategies.base import Strategy
 CACHE_DIR = Path("cache")
 
 
-def _fingerprint(segments: list[np.ndarray]) -> str:
+# Files that only matter to the strategies named here, so adding or editing
+# one does not invalidate hours of runs of everything else.
+OWN_FILES = {
+    "corn_sig.py": {"CORN-Sig"},
+    "knn.py": {"BNN", "BNN-Hist", "BNN-KDE", "BNN-Gauss"},
+}
+
+
+def owned_elsewhere(path: Path, name: str) -> bool:
+    return name not in OWN_FILES.get(path.name, {name})
+
+
+def _fingerprint(segments: list[np.ndarray], name: str) -> str:
     # Cached portfolios are only valid for the same strategy code and the
-    # same price data. meta_algorithms/ is left out of the code hash so
-    # adding a combiner does not invalidate hours of expert runs. corn_sig.py
-    # is left out for the same reason; delete cache/*/CORN-Sig* if it changes.
+    # same price data. meta_algorithms/ is left out of the code hash for the
+    # same reason as OWN_FILES.
     h = hashlib.sha1()
     for path in sorted(Path("strategies").rglob("*.py")):
-        if "meta_algorithms" not in path.parts and path.name != "corn_sig.py":
+        if "meta_algorithms" not in path.parts and not owned_elsewhere(path, name):
             h.update(path.read_bytes())
     h.update(Path("engine.py").read_bytes())
     for segment in segments:
@@ -46,7 +57,7 @@ def strategy_portfolios(
     # computed once and kept in cache/.
     key = "".join(c if c.isalnum() or c in "._-" else "_" for c in f"{name}__{param!r}")
     path = CACHE_DIR / universe / f"{key}.npz"
-    fingerprint = _fingerprint(segments)
+    fingerprint = _fingerprint(segments, name)
     if path.exists():
         with np.load(path) as f:
             if str(f["fingerprint"]) == fingerprint:

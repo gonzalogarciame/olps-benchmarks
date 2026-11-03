@@ -62,6 +62,8 @@ drawdowns and discussion are in the paper; the numbers above come from
 | Pattern matching | CORN | Ch. 8, Alg. 8.1 | [corn.py](strategies/pattern_matching/corn.py) |
 | | CORN-Sig (signature distance instead of correlation) | Ni et al. 2021 | [corn_sig.py](strategies/pattern_matching/corn_sig.py) |
 | | CORN-U, CORN-K | Ch. 8, Alg. 8.2 / 8.3 | [corn_u.py](strategies/pattern_matching/corn_u.py), [corn_k.py](strategies/pattern_matching/corn_k.py) |
+| | BNN (k nearest windows by Euclidean distance) | Ch. 6.1, Gyorfi et al. 2008 | [knn.py](strategies/pattern_matching/knn.py) |
+| | BNN-Hist, BNN-KDE, BNN-Gauss (nearest windows by Wasserstein-1 distance between return distributions: histogram, kernel density, fitted normal) | this project | [knn.py](strategies/pattern_matching/knn.py) |
 | Meta-algorithms | Hedge with Fixed Share over the experts | Herbster & Warmuth 1998 | [fixed_share.py](strategies/meta_algorithms/fixed_share.py) |
 | | PolicyExperts (learned softmax policy over the experts) | this project | [policy_gradient.py](strategies/meta_algorithms/policy_gradient.py) |
 
@@ -172,9 +174,10 @@ b_t = strategy.get_portfolio(price_relatives.values[:10])
 ## Status
 
 Implemented: the benchmarks, Follow the Winner, Follow the Loser, Pattern
-Matching (CORN, CORN-Sig, CORN-U, CORN-K) and two combiners over the
-experts. Walk-forward results are stored and written up for the default
-strategy set on both universes.
+Matching (CORN, CORN-Sig, CORN-U, CORN-K, BNN and its three Wasserstein
+variants) and two combiners over the experts. Walk-forward results are
+stored and written up for the default strategy set on both universes.
 
-Not done yet: the walk-forward benchmark of ONS and the CORN family, the
-book's other meta-algorithms, and a test suite.
+Not done yet: the write-up of ONS, the CORN family and the BNN variants (their
+walk-forward runs are stored as each one finishes), the book's other
+meta-algorithms, and a test suite.

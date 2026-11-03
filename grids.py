@@ -10,6 +10,7 @@ from strategies.pattern_matching.corn import CORN
 from strategies.pattern_matching.corn_k import CORNK
 from strategies.pattern_matching.corn_sig import CORNSig
 from strategies.pattern_matching.corn_u import CORNU
+from strategies.pattern_matching.knn import BNN, BNNDist
 
 # name -> (factory(n, p), candidate values of p, default). Defaults are the
 # book's own values where it gives one, the untuned starting point otherwise;
@@ -34,9 +35,23 @@ GRIDS = {
     ),
     "CORN-U": (lambda n, rho: CORNU(n, rho=rho), [0.0, 0.1, 0.3], 0.1),
     "CORN-K": (lambda n, K: CORNK(n, K=K), [1, 3, 5], 3),
+    "BNN": (
+        lambda n, p: BNN(n, w=p[0], q=p[1]),
+        [(w, q) for w in (3, 5, 7, 10) for q in (0.05, 0.1, 0.2)],
+        (5, 0.1),
+    ),
 }
 
-SLOW = ["CORN", "CORN-Sig", "CORN-U", "CORN-K"]
+# the distribution distances need enough days in a window to estimate a
+# distribution, hence longer windows than the CORN family
+for _name, _density in (("BNN-Hist", "hist"), ("BNN-KDE", "kde"), ("BNN-Gauss", "gauss")):
+    GRIDS[_name] = (
+        lambda n, p, d=_density: BNNDist(n, w=p[0], q=p[1], density=d),
+        [(w, q) for w in (5, 10, 20, 40) for q in (0.05, 0.1, 0.2)],
+        (20, 0.1),
+    )
+
+SLOW = ["CORN", "CORN-Sig", "CORN-U", "CORN-K", "BNN", "BNN-Hist", "BNN-KDE", "BNN-Gauss"]
 
 # experts combined by Hedge with Fixed Share (strategies/meta_algorithms/
 # fixed_share.py) -- every non-hindsight strategy at its default parameter;

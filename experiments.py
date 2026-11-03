@@ -24,7 +24,13 @@ from strategies.follow_the_winner.ons import ONS
 from strategies.follow_the_winner.up import UP
 from strategies.meta_algorithms.fixed_share import fixed_share_wealth
 from strategies.meta_algorithms.policy_gradient import policy_experts_wealth
-from walk_forward import segmented_wealth, strategy_portfolios, walk_forward, walk_forward_all
+from walk_forward import (
+    owned_elsewhere,
+    segmented_wealth,
+    strategy_portfolios,
+    walk_forward,
+    walk_forward_all,
+)
 
 # Each strategy's wealth curve is kept in results/<universe>/wealth.csv with
 # the hash of everything it depends on in keys.csv. A run recomputes a
@@ -95,15 +101,16 @@ class Universe:
 
 
 def key(u: Universe, name: str) -> str:
-    # meta_algorithms/ and corn_sig.py are only hashed into the strategies
-    # that use them, so editing a combiner leaves the experts' results valid.
+    # meta_algorithms/ and the walk_forward.OWN_FILES are only hashed into the
+    # strategies that use them, so editing a combiner leaves the experts'
+    # results valid.
     # The data itself is not hashed: the window and constituents are, which
     # is what lets a run with nothing to compute skip the download.
     h = hashlib.sha1()
     for path in sorted(Path("strategies").rglob("*.py")):
         if "meta_algorithms" in path.parts and name not in COMBINERS:
             continue
-        if path.name == "corn_sig.py" and name != "CORN-Sig":
+        if owned_elsewhere(path, name):
             continue
         h.update(path.read_bytes())
     for path in ("engine.py", "walk_forward.py"):

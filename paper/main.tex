@@ -881,6 +881,7 @@ differed.
 
 \begin{table}[h]
 \centering
+\small
 \begin{tabular}{llll}
 \toprule
 Strategy & Parameter & Candidates & Default \\
@@ -895,6 +896,10 @@ CORN & $(w,\rho)$ & $w \in \{3,5,7,10\}$, $\rho \in \{0,0.1,0.3\}$ & (5, 0.1) \\
 CORN-Sig & $(w,q)$ & $w \in \{3,5,7,10\}$, $q \in \{0.05,0.1,0.2\}$ & (5, 0.1) \\
 CORN-U & $\rho$ & 0, 0.1, 0.3 & 0.1 \\
 CORN-K & $K$ & 1, 3, 5 & 3 \\
+BNN & $(w,q)$ & $w \in \{3,5,7,10\}$, $q \in \{0.05,0.1,0.2\}$ & (5, 0.1) \\
+BNN-Hist & $(w,q)$ & $w \in \{5,10,20,40\}$, $q \in \{0.05,0.1,0.2\}$ & (20, 0.1) \\
+BNN-KDE & $(w,q)$ & as BNN-Hist & (20, 0.1) \\
+BNN-Gauss & $(w,q)$ & as BNN-Hist & (20, 0.1) \\
 \bottomrule
 \end{tabular}
 \caption{Candidate values for each strategy's parameter. Defaults are the
@@ -1012,11 +1017,55 @@ periods, and on some of them the default solver (Clarabel) fails outright
 in the best-constant-portfolio step. That step is shared by the whole CORN
 family, and in the first runs CORN, CORN-U, CORN-K and CORN-Sig all stopped
 on it, on both universes. It now retries with SCS, which is less exact but
-always returns, so a run does not stop hours in. The signature code is left
-out of the cache fingerprint
-so that adding it did not invalidate the stored CORN runs. If
-\texttt{corn\_sig.py} changes, its cached portfolios have to be deleted by
-hand.
+always returns, so a run does not stop hours in. The signature code is
+hashed only into CORN-Sig's own stored results, so editing it leaves the
+other strategies' results valid.
+
+\subsection{Nearest-Neighbour Matching: BNN and Wasserstein Distances}
+\label{sec:knn}
+
+The book lists three ways to decide which past windows are similar to the
+latest one (Section~6.1): the two windows fall in the same cell of a
+partition, they lie within a fixed Euclidean distance, or one is among the
+$k$ nearest neighbours of the other. CORN uses a threshold on correlation
+and CORN-Sig a distance between signatures. The nearest-neighbour rule is
+BNN (Gy\"orfi et al., 2008). The distance is the Euclidean distance between
+the two windows read as vectors of $w \cdot m$ price relatives, and the
+portfolio is again the best constant rebalanced portfolio over the days
+that followed the $k$ nearest windows. We take $k$ as a fraction $q$ of the
+earlier windows, as in CORN-Sig, so that it grows with the history instead
+of staying fixed. BNN and CORN-Sig then differ only in the distance. The grid is the same as CORN-Sig's.
+
+Three further strategies keep this rule and change only the distance, to
+compare windows as distributions. The $w$ log relatives of each asset in a
+window are taken as a sample of a distribution, and the distance between
+two windows is the sum over the assets of the 1-Wasserstein distance
+between these distributions. In one dimension $W_1(F,G) = \int |F(r) -
+G(r)|\,dr$, the area between the two cumulative distribution functions, so
+each window is stored as its distribution function on a fixed grid of 40
+bins between $-10\%$ and $+10\%$ (returns beyond that are clipped to the
+ends), and the distance is the summed area. The three strategies differ in
+how the distribution of a window is estimated:
+\begin{itemize}
+    \item \textbf{BNN-Hist}: the $w$ values are counted into the bins, which
+    gives a discrete probability.
+    \item \textbf{BNN-KDE}: a Gaussian kernel density with Silverman's
+    bandwidth $1.06\,\hat\sigma\,w^{-1/5}$, at least $0.001$.
+    \item \textbf{BNN-Gauss}: a normal distribution fitted by the mean and
+    standard deviation of the window, with the deviation at least $0.001$.
+\end{itemize}
+A distribution cannot be estimated from three days, so these use longer
+windows, $w \in \{5, 10, 20, 40\}$, with $(20, 0.1)$ as the starting value
+(Table~\ref{tab:grids}).
+
+This is a different question from CORN-Sig's. Windows are compared asset by
+asset, so the distance ignores the order of the days inside a window and the
+dependence between assets, both of which the signature keeps. In exchange
+it sees the whole shape of the recent return distribution, spread and
+tails included. A window's distribution function depends only on its own
+days, so it is computed once and kept between periods. We checked the stored
+functions against a direct computation of the distance for each window on
+synthetic data, with a largest difference below $10^{-8}$.
 
 \subsection{Combining the Strategies: Hedge with Fixed Share}
 \label{sec:fixed-share}
@@ -1519,8 +1568,8 @@ rather than addressed immediately, each for a stated reason:
     whether to switch to the conventional relative definition is left
     open rather than changed silently alongside unrelated work.
     \item \textbf{Remaining book chapters.} Pattern Matching is implemented
-    (Sections~\ref{sec:corn} and~\ref{sec:corn-sig}), but its full
-    benchmark has not been run. Of the Meta-Algorithms chapter we have a
+    (Sections~\ref{sec:corn}, \ref{sec:corn-sig} and~\ref{sec:knn}), but
+    its full benchmark has not been written up. Of the Meta-Algorithms chapter we have a
     combination by Hedge with Fixed Share (Section~\ref{sec:fixed-share})
     and a learned combiner (Section~\ref{sec:policy}); the book's other
     meta-algorithms are not implemented. PAMR-1 and OLMAR-1 are
