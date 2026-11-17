@@ -14,6 +14,4 @@ class CRP(Strategy):
         return self._b
 
     def update(self, history: np.ndarray) -> np.ndarray:
-        # Unlike BAH, which lets weights drift with the market, CRP
-        # actively rebalances back to the same fixed b every period.
         return self._b
