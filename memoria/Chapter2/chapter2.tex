@@ -1,0 +1,105 @@
+\chapter{Benchmark strategies}
+
+The first strategies we implemented are the three benchmarks of the book
+\parencite[Ch.~3]{lihoi}: buy and hold, the constant rebalanced portfolio and the best
+stock. They are the reference point, since an algorithm that cannot beat buy and hold is not worth using due to transaction costs.
+Implementing these benchmarks first was also useful to test the simulation with strategies whose results we can check by
+hand. In all of them the weights are equal at the beginning, $b=(1/m,\dots,1/m)$,
+unless said otherwise.
+
+\section{Buy and hold}
+
+Buy and hold (BAH) is the simplest strategy. We choose a portfolio $b_1$ on the first
+day and never trade again. Its final wealth is
+\[
+S_n(\mathrm{BAH}) = b_1\cdot\bigodot_{t=1}^{n} x_t .
+\]
+The formula looks odd at first, so we read it piece by piece. The symbol $\bigodot$ is
+the element-wise product of the vectors $x_1,\dots,x_n$, so the $i$-th component of
+$\bigodot_t x_t$ is $\prod_t x_{t,i}$. That is the factor by which the price of asset
+$i$ has been multiplied from the first to the last day, for example 2 if it has
+doubled or 0.5 if it has lost half of its value. The dot product with $b_1$ gives the
+average of these factors weighted by the initial weights. It makes sense, because the
+money we put in asset $i$ has grown exactly as much as the price of that asset.
+
+Even if we never trade, the weights of the portfolio do change. An asset that goes up
+becomes a bigger part of the total, and one that goes down becomes smaller. On day
+$t+1$ the weights are
+\[
+b_{t+1,i}=\frac{b_{t,i}\,x_{t,i}}{b_t\cdot x_t},
+\]
+which is the old weight multiplied by the return of the asset and divided by the
+return of the whole portfolio. We need this expression in the code, because the
+simulation asks every strategy for its portfolio each day, including BAH.
+
+\section{Constant rebalanced portfolio}
+
+The constant rebalanced portfolio (CRP) \parencite{cover91} does the opposite. It fixes
+a portfolio $b$ and goes back to it every day, so its final wealth is
+\[
+S_n(\mathrm{CRP}(b)) = \prod_{t=1}^{n} b\cdot x_t .
+\]
+Each factor $b\cdot x_t$ is how much the wealth grows on day $t$ (the average of the
+price relatives of that day weighted by $b$), and the wealth after $n$ days is the
+product of the daily factors. The difference with BAH is where the product is placed.
+In BAH it is inside the dot product, so each asset grows on its own. In CRP it is
+outside, because every day we start again from the same weights.
+
+After the prices move, the weights are no longer $b$. To go back to $b$ the strategy
+has to sell a bit of what has gone up and buy a bit of what has gone down. So CRP is a
+contrarian strategy, and it trades every day, which we ignore for now because the
+simulation has no transaction costs. The reason why it is interesting is that it can
+take advantage of the fluctuations. If one asset goes up and then comes back down
+while another does the opposite, BAH ends where it started, but CRP has been selling
+high and buying low in between. In general, the growth rate of a CRP is never lower
+than the weighted average of the growth rates of its assets, and it is higher the more
+the assets move differently from each other.
+
+\section{Best stock and BCRP}
+
+The best stock puts all the wealth in the asset that grew the most over the whole
+period,
+\[
+S_n(\mathrm{Best\ Stock}) = \max_{i=1,\dots,m}\ \prod_{t=1}^{n} x_{t,i}.
+\]
+It is a BAH whose initial portfolio is concentrated on the best asset. The problem is
+that we only know which asset is the best once the period is over. This means that it
+cannot be run in real time, because it uses information from the future. It is not a
+competitor but a ceiling to compare with.
+
+There is a similar ceiling for CRP, the best constant rebalanced portfolio (BCRP),
+which is the CRP with the weights that would have been the best in hindsight,
+\[
+b^\ast=\arg\max_{b\in\Delta_m}\prod_{t=1}^{n} b\cdot x_t .
+\]
+We do not compute it in this chapter, but it will be the target of the algorithms of
+the next one. The three ceilings are ordered:
+\[
+S_n(\mathrm{BAH}(b_1))\le S_n(\mathrm{Best\ Stock})\le S_n(\mathrm{BCRP}).
+\]
+The first inequality holds because BAH gives an average of the growth factors of the
+assets, and an average cannot be larger than the largest of them. The second holds
+because the best stock is also a CRP, the one with all the weight on a single asset
+(it never has to rebalance), so it is one of the portfolios among which the BCRP is
+chosen. The ordering only applies to BAH. A particular CRP, like the uniform one, can
+end below or above the best stock.
+
+\section{Implementation}
+
+All strategies share one interface. A strategy receives the price relatives observed
+up to $t-1$ and returns the portfolio $b_t$. On the first day, when there is no
+history, the strategy returns its initial portfolio, which is the equal-weight one
+unless the strategy sets another. Every portfolio returned is validated before it is
+used: it must have $m$ components, none negative, and add up to one. The simulation
+asks for $b_t$ with only $x_1,\dots,x_{t-1}$ in hand, multiplies it by $x_t$ and
+updates the wealth with $S_t=S_{t-1}\,(b_t\cdot x_t)$, $S_0=1$.
+
+The BAH class computes the drifted portfolio from the history it receives. The CRP
+class just returns its fixed $b$. The best stock is written as a BAH whose initial
+portfolio is chosen in the constructor from the complete history. This is the only
+place in the code where a strategy sees future data, which is why it is kept apart and
+never used as a comparison with online algorithms.
+
+We checked the three classes on a series of 500 days and four assets simulated
+with random price relatives. The final wealth that the simulation returns for each
+strategy matches the formulas of this chapter, differing by less than $10^{-13}$.

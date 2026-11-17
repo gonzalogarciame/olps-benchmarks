@@ -1,0 +1,126 @@
+%%%%%%%%%%%%%%%%%%%%
+% Layout based on the template by Fernando Oleo Blanco.
+%%%%%%%%%%%%%%%%%%%%
+
+\documentclass[12pt, a4paper, oneside]{book}
+
+%% PACKAGES
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, amsfonts, amssymb, amsthm}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[final]{pdfpages}
+\usepackage{csquotes}
+\usepackage[backend=biber,
+			style=apa,
+			sorting=nyt]{biblatex}
+
+% Specialised packages
+\usepackage{algorithm2e}
+\usepackage{pgfplots}
+\setlength{\marginparwidth}{2cm}
+\usepackage{todonotes}
+\usepackage{siunitx}
+\usepackage{eurosym}
+
+%% PACKAGE CONFIGURATION
+
+\setlength{\headheight}{15pt}
+\pgfplotsset{compat=1.18}
+\DeclareLanguageMapping{english}{english-apa}
+\addbibresource{main.bib}
+
+% Header and footer customization
+\fancyhf{}
+\fancyhead[L]{\slshape \leftmark}
+\fancyhead[R]{\slshape \nouppercase \rightmark}
+\fancyfoot[R]{\thepage}
+
+% First page of each chapter: same footer, no header
+\fancypagestyle{plain}{%
+	\fancyhf{}
+	\fancyfoot[R]{\thepage}
+	\renewcommand{\headrulewidth}{0pt}
+}
+
+%% CUSTOM COMMANDS
+
+\newtheorem{proposition}{Proposition}[chapter]
+
+\newenvironment{abstract}%
+{\cleardoublepage \null \vfill \begin{center}%
+		\bfseries \abstractname \end{center}}%
+{\vfill\null}
+
+%% DOCUMENT
+
+\begin{document}
+
+	\frontmatter
+	\pagestyle{empty}
+
+	\begin{titlepage}
+		\begin{figure}
+			\centering
+			\includegraphics[width=0.3\linewidth]{LogoUniversidadBN}
+		\end{figure}
+		\centering
+		\Large Degree in Mathematical Engineering and Artificial Intelligence \\
+		\vspace*{2.5em}
+		\centering
+		Bachelor's final project \\
+		\vspace*{1em}
+		Online Portfolio Selection:\\ Classical Algorithms and Expert Combination
+		\\ \large
+		\vspace*{3em}
+		Author \\ Gonzalo García Martínez-Echevarría \\
+		\vspace*{1em}
+		Supervised by \\ Álvaro Guinea Juliá (tutor) \\ Rogelio Martínez Perea (director)
+		\vfill
+		Madrid \\
+		November 2026
+	\end{titlepage}
+
+	% To be written at the end of the project
+	% \begin{abstract}
+	% 	Abstract content
+	% \end{abstract}
+	%
+	% \newpage
+	%
+	% {\centering Acknowledgements\\}
+	% \vfill
+
+	\cleardoublepage
+
+	\tableofcontents
+	\listoffigures
+	\listoftables
+
+	\cleardoublepage
+
+	\mainmatter
+
+	\pagestyle{fancy}
+
+	\include{Chapter1/chapter1}
+	\include{Chapter2/chapter2}
+	\include{Chapter3/chapter3}
+
+	\appendix
+
+	\cleardoublepage
+
+	\printbibliography[heading=bibintoc]
+
+	\backmatter
+
+\end{document}

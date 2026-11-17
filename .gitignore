@@ -11,3 +11,17 @@ paper/main.fls
 paper/main.fdb_latexmk
 paper/main.synctex.gz
 cache/
+anexo_b/
+memoria/*.aux
+memoria/*.log
+memoria/*.out
+memoria/*.toc
+memoria/*.pdf
+memoria/**/*.aux
+memoria/*.bbl
+memoria/*.bcf
+memoria/*.blg
+memoria/*.run.xml
+memoria/*.lof
+memoria/*.lot
+memoria/*.zip

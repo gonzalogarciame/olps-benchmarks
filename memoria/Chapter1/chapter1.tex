@@ -1,0 +1,41 @@
+\chapter{Introduction}
+
+An investor who has some capital and several assets to invest in (stocks, bonds,
+exchange-traded funds, commodities) has to decide how much of the money goes into
+each one. The set of assets with the proportion assigned to each is called a
+portfolio. Prices of these assets change every day, so an allocation that was
+reasonable yesterday may stop being so, and the investor has to decide again and
+again. Managing a portfolio means making this sequence of decisions.
+
+Consider a market with $m$ assets traded over $n$ periods, which in this work are
+trading days. A portfolio is a vector $b=(b_1,\dots,b_m)$ where $b_i$ is the
+fraction of wealth invested in asset $i$. In this project the fractions cannot be
+negative (short positions are not allowed) and they add up to one, so all the
+wealth is invested. The set of possible portfolios is
+\[
+\Delta_m=\Big\{\,b\in\mathbb{R}^m : b_i\ge 0,\ \textstyle\sum_{i=1}^m b_i=1\,\Big\}.
+\]
+
+The evolution of the market is described by the \emph{price relatives}. In period
+$t$, component $i$ of the vector $x_t$ is the ratio between the closing price of
+asset $i$ at $t$ and its price at $t-1$. A value of $1.02$ means the asset rose
+2\,\% that day, and $0.97$ means it fell 3\,\%. If the portfolio held at the start
+of the period is $b_t$, wealth is multiplied that day by $b_t\cdot x_t$, which is
+the average of the $x_{t,i}$ weighted by the portfolio. Starting from a wealth of
+one, after $n$ periods we have
+\[
+S_n=\prod_{t=1}^{n} b_t\cdot x_t .
+\]
+
+The Online Portfolio Selection (OLPS) problem consists in choosing $b_1,\dots,b_n$
+so that $S_n$ is as large as possible. The word \emph{online} means that $b_t$ is
+decided before $x_t$ is known, using only the prices of earlier periods
+$x_1,\dots,x_{t-1}$, which is what happens in real life. An OLPS algorithm takes
+the price history and returns the next day's portfolio.
+
+This setting differs from the classical Markowitz approach \parencite{markowitz}, which
+estimates the mean and covariance of returns and then optimises the portfolio using
+those estimates. OLPS algorithms assume no statistical model of the market, and they
+are judged directly by the wealth they would have achieved. The work is based on the
+book \emph{Online Portfolio Selection: Principles and Algorithms} by \textcite{lihoi}, which gathers the algorithms of the field under a common
+notation and is used as the reference throughout the project.

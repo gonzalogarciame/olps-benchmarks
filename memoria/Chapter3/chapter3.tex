@@ -1,0 +1,191 @@
+\chapter{Follow the winner}
+
+The first principle in the book is follow the winner \parencite[Ch.~4]{lihoi}: the
+algorithms increase the weight of the assets that have done well so far. Their target
+is the BCRP of the previous chapter. It is a reasonable target because, if the price
+relatives were independent and had the same distribution every day, the BCRP would be
+the best strategy in the long run \parencite{cover91}. Real markets do not behave like
+that, but it gives the algorithms a clear goal. The BCRP needs future prices, so an
+online algorithm can only try to get close to it. The distance is measured with the
+regret,
+\[
+\mathrm{regret}_n(\mathrm{Alg})=\log S_n(\mathrm{BCRP})-\log S_n(\mathrm{Alg}),
+\]
+and an algorithm is called universal if $\mathrm{regret}_n/n\to 0$ \parencite{cover91}.
+This means that it grows at the same exponential rate as the BCRP for any sequence of
+prices, with no assumption about how the market behaves. The three algorithms of this
+chapter are universal, each one in a different way.
+
+\section{Universal portfolio}
+
+The universal portfolio (UP) was proposed by \textcite{cover91}. It avoids choosing $b$
+by running every possible CRP at the same time. Imagine one investor for each portfolio
+$b\in\Delta_m$, all starting with the same capital and each one following his own
+CRP. After $t$ days the wealth of the investor of $b$ is
+\[
+S_t(b)=\prod_{\tau=1}^{t}b\cdot x_\tau .
+\]
+Today, UP invests as an average of all these portfolios, giving more weight to the
+investors who are richer:
+\begin{equation}
+b_{t+1}=\frac{\int_{\Delta_m}b\,S_t(b)\,\mathrm{d}\mu(b)}{\int_{\Delta_m}S_t(b)\,\mathrm{d}\mu(b)} .
+\label{eq:up}
+\end{equation}
+Here $\mu$ is the distribution that gives the initial capital to each investor, and we
+use the uniform one, as in the original paper. The numerator adds up all the portfolios
+multiplied by their wealth, and the denominator divides by the total wealth so that the
+result adds up to one. The CRPs that have done well weigh more, so UP follows the
+winners. One consequence of the definition is that the final wealth of UP is the
+average of the final wealth of all the CRPs, $S_n(\mathrm{UP})=\int S_n(b)\,\mathrm{d}\mu(b)$.
+This is the same idea as BAH of Chapter~2, using CRPs instead of single assets.
+\textcite{cover91} proved that the regret of UP grows only as $O(m\log n)$, so UP is
+universal.
+
+The difficulty is that the integrals are over a simplex of dimension $m-1$, and
+computing them exactly costs an exponential amount of work in $m$. \textcite{kalai02}
+proposed a polynomial algorithm based on random walks, which we did not implement.
+Instead, we replaced the integrals by sums over a random sample. We draw $K=1000$
+portfolios $b^{(1)},\dots,b^{(K)}$ once from the uniform distribution on the simplex
+(a Dirichlet distribution with all parameters equal to one) and use
+\[
+b_{t+1}\approx\frac{\sum_{k=1}^{K}b^{(k)}\,S_t(b^{(k)})}{\sum_{k=1}^{K}S_t(b^{(k)})} .
+\]
+The approximation has a limit when there are many assets. A portfolio drawn uniformly
+spreads its weight over many assets: the expected value of its largest weight is
+$H_m/m$, where $H_m=\sum_{k=1}^{m}1/k$, which is $0.75$ for $m=2$ and only $0.13$ for
+$m=30$. With 30 assets all the samples are diversified, so the sampled UP cannot move
+towards a concentrated portfolio, and it stays close to the uniform CRP.
+
+\section{Exponential gradient}
+
+Exponential gradient (EG) was proposed by \textcite{helmbold98}. Instead of looking at
+all the history, it uses the last day. The next portfolio should have done well on
+that day, but it should not be very far from the current one:
+\begin{equation}
+b_{t+1}=\arg\max_{b\in\Delta_m}\ \eta\,\log(b\cdot x_t)-R(b,b_t),
+\qquad R(b,b_t)=\sum_{i=1}^m b_i\log\frac{b_i}{b_{t,i}} .
+\label{eq:eg}
+\end{equation}
+The first term rewards the portfolios that would have grown the most on day $t$. The
+second, the relative entropy, is zero when $b=b_t$ and grows as $b$ moves away from it,
+so it acts as a penalty for changing too much. The learning rate $\eta>0$ decides which
+of the two terms matters more. The logarithm makes this problem hard, so the authors
+replace it by its first-order approximation around $b_t$. With this change the
+maximisation has an explicit solution,
+\begin{equation}
+b_{t+1,i}=\frac{b_{t,i}\,\exp\!\big(\eta\,x_{t,i}/(b_t\cdot x_t)\big)}{Z},
+\qquad i=1,\dots,m,
+\label{eq:eg-update}
+\end{equation}
+where $Z$ is the constant that makes the weights add up to one. The ratio
+$x_{t,i}/(b_t\cdot x_t)$ compares the return of asset $i$ with the return of the whole
+portfolio. If the asset did better than the portfolio it is greater than one and the
+weight of the asset grows, and if it did worse the weight decreases. If we apply the
+update many times, the weight of an asset ends up being the exponential of $\eta$ times
+the total amount by which that asset has beaten the portfolio, so the winners are
+followed in a literal way.
+
+The learning rate controls the speed. If $\eta$ is very small the portfolio hardly
+moves from the uniform one and EG behaves like the uniform CRP, and if it is large the
+portfolio reacts strongly to each day. We use $\eta=0.05$, the value suggested by
+\textcite{helmbold98} and used in the experiments of the book. The regret of EG is
+$O(\sqrt{n\log m})$ \parencite{helmbold98}, which is worse than that of UP, but each
+update costs only $O(m)$.
+
+\section{Online Newton step}
+
+Online Newton step (ONS) was proposed by \textcite{agarwal06}, who applied to
+portfolio selection the Newton method for online convex optimization
+\parencite{hazan07}. The idea is the same as in the Newton method for finding a
+minimum: use the second derivative to decide how far to move in each direction. For
+each day we define
+\[
+g_\tau=\frac{x_\tau}{b_\tau\cdot x_\tau},\qquad
+A_t=I_m+\sum_{\tau=1}^{t}g_\tau g_\tau^\top,\qquad
+c_t=\Big(1+\frac1\beta\Big)\sum_{\tau=1}^{t}g_\tau .
+\]
+The vector $g_\tau$ is the gradient of $\log(b\cdot x_\tau)$ with respect to $b$ at the
+portfolio held that day, and $g_\tau g_\tau^\top$ is, up to the sign, its second
+derivative. So $c_t$ adds up the gradients seen so far and $A_t$ adds up the curvature,
+starting from the identity matrix $I_m$, which makes $A_t$ invertible. ONS starts from
+the uniform portfolio and then
+\[
+b_{t+1}=\Pi^{A_t}_{\Delta_m}\big(\delta\,A_t^{-1}c_t\big),
+\qquad
+\Pi^{A}_{\Delta_m}(y)=\arg\min_{b\in\Delta_m}(b-y)^\top A\,(b-y).
+\]
+The vector $\delta A_t^{-1}c_t$ is the Newton step: the accumulated gradient divided
+by the accumulated curvature, so the directions where the logarithm has curved the
+most get smaller steps. This vector is not necessarily a portfolio, so the last
+operation $\Pi$ projects it onto the simplex, that is, it looks for the closest
+portfolio. The distance used is the one defined by $A_t$ and not the usual Euclidean
+one, which is the geometry in which the step is taken. The parameters are $\beta$ and
+$\delta$, and we use the values suggested by \textcite{agarwal06}, $\beta=1$ and
+$\delta=1/8$. The regret of ONS is $O(m^{1.5}\log(mn))$ \parencite{agarwal06}, a bit
+worse than UP in $m$, and each day costs $O(m^3)$ for the matrix operations plus the
+projection.
+
+\section{Comparison}
+
+Table~\ref{tab:ftw} summarises the three algorithms.
+
+\begin{table}[h]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{2.3cm}p{3.5cm}p{3.3cm}p{3.4cm}}
+\toprule
+ & UP & EG & ONS \\
+\midrule
+Idea & average of all the CRPs, weighted by their wealth & multiplicative update with the last day's gradient & Newton step on the accumulated log-gradient \\
+Regret & $O(m\log n)$ & $O(\sqrt{n\log m})$ & $O(m^{1.5}\log(mn))$ \\
+Cost per period & exponential in $m$ (exact) & $O(m)$ & $O(m^3)$ and a projection \\
+Parameters & distribution $\mu$ ($K$ and seed in our version) & $\eta$ & $\beta$, $\delta$ \\
+\bottomrule
+\end{tabular}
+\caption{The three follow the winner algorithms, with the regret bounds of
+\textcite{cover91}, \textcite{helmbold98} and \textcite{agarwal06}. The costs assume
+that the state is kept from one day to the next.}
+\label{tab:ftw}
+\end{table}
+
+UP has the best regret but is not feasible for many assets, and the sampled version
+loses its guarantee. EG is the cheapest and has the weakest bound, and its parameter
+has to be small for the theory but not so small that the portfolio never moves. ONS is
+in between, with the cost of a matrix problem every day. All of them are guaranteed
+against the BCRP, which is a fixed portfolio. If the best weights change over time, being
+close to the BCRP does not say much about how much an algorithm earns, and that is
+one reason to study other families.
+
+\section{Implementation}
+
+The three classes follow the interface of Chapter~2. None of them keeps information
+between days: each call to \texttt{update} receives the whole history and computes
+$b_{t+1}$ from it.
+
+\texttt{EG} starts from the uniform portfolio and applies~\eqref{eq:eg-update} once
+per row of the history. \texttt{UP} draws the $K$ portfolios once, in the constructor
+and from a fixed seed, so the strategy is deterministic. Each day it computes
+$b^{(k)}\cdot x_\tau$ for every draw and every day of the history, multiplies over the
+days to get $S_t(b^{(k)})$, and returns the weighted average of the draws.
+\texttt{ONS} goes through the history updating $A$ and $c$, solves the linear system
+with \texttt{numpy} instead of inverting $A$, and solves the projection as a quadratic
+program with \texttt{cvxpy}. The solver can return tiny negative weights, of the order
+of $10^{-9}$, where the constraint should give exactly zero, so the result is clipped
+at zero before it goes through the validation of the interface.
+
+Recomputing from the beginning on each call costs little for EG and UP, but it is very
+expensive for ONS. The projection depends on the previous portfolio, so it has to be
+solved once per day of the history in each call, and the number of quadratic programs
+for a run of $n$ days grows as $n^2/2$. This is why ONS is by far the slowest strategy
+of the project.
+
+We checked the classes on small cases where the answer can be computed by other
+means. For UP with $m=2$ assets and 300 simulated days, the integral of~\eqref{eq:up}
+was computed on a grid of 20\,001 points and compared with the sampled portfolio. With
+$K=1000$ the two differ by less than $10^{-3}$, and with $K=100$ by about $0.02$. For
+EG, we solved numerically the maximisation of the linearised problem for $m=3$ with a
+general-purpose optimiser, and the result coincides with~\eqref{eq:eg-update} up to
+$10^{-8}$. For ONS, the projection of a point onto the simplex for $m=2$ and a given
+matrix $A$ was compared with a search over a fine grid, and both give the same
+portfolio to the resolution of the grid.
