@@ -12,8 +12,9 @@ What sets the benchmark apart from a plain re-implementation:
   past data only (walk-forward), never from the period it is used on.
 - **Point-in-time universes.** The DJIA backtest follows the real index
   reconstitutions instead of assuming today's constituents always existed.
-- **A market reference.** Every result is compared with SPY (S&P 500 total
-  return) over the same days.
+- **A market reference.** DJIA results are compared with SPY (S&P 500 total
+  return) over the same days. The ETF universe has no such reference, because
+  SPY is one of its five assets.
 - **Run one strategy at a time.** Each finished strategy is stored as CSV,
   so a change never means repeating a multi-hour run.
 
@@ -28,22 +29,34 @@ Walk-forward results. APY is the annualized return and Sharpe is
 | BAH | +9.1% | 0.28 | +7.0% | 0.34 |
 | CRP | +9.9% | 0.30 | +6.6% | 0.34 |
 | UP | +9.9% | 0.30 | +6.7% | 0.35 |
+| ONS (default parameter) | +9.1% | 0.14 | not run | |
 | EG | +9.9% | 0.30 | +6.6% | 0.33 |
 | Anticor | +17.3% | 0.36 | +7.0% | 0.17 |
 | PAMR | +8.5% | 0.20 | +13.2% | 0.51 |
 | PAMR-2 | +11.1% | 0.26 | +13.8% | 0.64 |
 | CWMR | -13.3% | -0.40 | +13.3% | 0.51 |
 | OLMAR-2 | -1.4% | -0.11 | +17.7% | 0.73 |
+| CORN | +7.1% | 0.10 | +12.3% | 0.49 |
+| CORN-Sig | +5.1% | 0.03 | +10.4% | 0.38 |
+| CORN-U | +10.0% | 0.25 | +9.7% | 0.42 |
+| BNN | +9.4% | 0.18 | +16.2% | 0.65 |
+| BNN-Hist | -0.0% | -0.12 | +6.8% | 0.17 |
+| BNN-KDE | -0.6% | -0.15 | +5.3% | 0.08 |
+| BNN-Gauss | -7.2% | -0.34 | +11.9% | 0.47 |
 | Fixed Share | +8.1% | 0.18 | +14.8% | 0.70 |
 | PolicyExperts | +8.5% | 0.16 | +15.9% | 0.75 |
-| SPY (reference) | +8.4% | 0.23 | +11.1% | 0.36 |
+| SPY (DJIA reference) | +8.4% | 0.23 | | |
 
 The ranking depends on the universe: mean-reversion strategies that lose on
 the DJIA (CWMR, OLMAR-2) are among the best on the ETFs. PolicyExperts
 depends on its random seed (about one point of APY on the DJIA), so one run
-says little. The CORN family and ONS have not been run yet. Full tables,
-drawdowns and discussion are in the paper; the numbers above come from
-`results/*/metrics.csv`.
+says little. Among the CORN strategies, CORN-U is the only one above SPY on
+the DJIA. The Euclidean BNN is above SPY on the DJIA and the strongest
+pattern matching strategy on the ETFs; the three Wasserstein variants lose
+money on the DJIA. ONS is run once at its default parameter, not by walk-forward.
+CORN-K has not been run on either universe and ONS has not been run on the
+ETFs. Full tables, drawdowns and discussion are in the paper; the
+numbers above come from `results/*/metrics.csv`.
 
 ## Strategies
 
@@ -92,7 +105,7 @@ python run.py --only Anticor CORN-Sig  # just these, including the slow ones
 python run.py --list                   # which strategies are stored, outdated or missing
 python run.py --force                  # recompute even if stored results are current
 python run.py --no-run                 # compute nothing, redraw plots from stored results
-python run.py --plot BAH Anticor       # one custom chart of just these (and SPY)
+python run.py --plot BAH Anticor       # one custom chart of just these (and SPY on the DJIA)
 ```
 
 `run_etf.py` takes the same options. `--only` accepts any strategy name,
@@ -124,7 +137,7 @@ Two layers, for two different costs:
 The files in `results/<universe>/`:
 
 - `wealth.csv`: one wealth curve per strategy (and per PolicyExperts seed)
-- `metrics.csv`: final wealth, APY, volatility, Sharpe, drawdown, Calmar, t-test and APY versus SPY
+- `metrics.csv`: final wealth, APY, volatility, Sharpe, drawdown, Calmar, t-test and, for the DJIA, APY versus SPY
 - `picks.csv`: the parameter chosen each year by the walk-forward selection
 - `keys.csv`: a hash of the code, grid and date window behind each column
 
@@ -148,6 +161,7 @@ strategies/        one file per algorithm, grouped as in the table above
 universes/         djia_universe.py (point-in-time Dow roster), etf_universe.py
 results/           stored CSV results (tracked)
 paper/main.tex     the written report
+memoria/           final degree project report (main.tex, chapters in Chapter*/)
 ```
 
 The DJIA universe (`universes/djia_universe.py`) follows every
@@ -176,8 +190,9 @@ b_t = strategy.get_portfolio(price_relatives.values[:10])
 Implemented: the benchmarks, Follow the Winner, Follow the Loser, Pattern
 Matching (CORN, CORN-Sig, CORN-U, CORN-K, BNN and its three Wasserstein
 variants) and two combiners over the experts. Walk-forward results are
-stored and written up for the default strategy set on both universes.
+stored and written up for the default strategy set on both universes, plus
+CORN, CORN-Sig, CORN-U, BNN, BNN-Hist, BNN-KDE and BNN-Gauss on both, and ONS
+on the DJIA (default parameter).
 
-Not done yet: the write-up of ONS, the CORN family and the BNN variants (their
-walk-forward runs are stored as each one finishes), the book's other
-meta-algorithms, and a test suite.
+Not done yet: runs of CORN-K on both universes and of ONS on the ETFs, the
+book's other meta-algorithms, and a test suite.

@@ -979,10 +979,11 @@ that skipping periods triggers the replay.
 On the first 150 periods of the DJIA's first segment, CORN, CORN-U and
 CORN-K ended with wealth 1.44, 1.39 and 1.13, against 0.99 for BAH. That
 is far too short to say anything about performance. The run only served to
-check that the pieces work and agree with each other. The full benchmarks
-have not been run, and the \texttt{cvxpy} solver reports ``solution may be
-inaccurate'' for some periods of CORN's portfolio step, which has not been
-investigated.
+check that the pieces work and agree with each other. The walk-forward
+results of CORN and CORN-U, on both universes, are in
+Sections~\ref{sec:wf-djia} and~\ref{sec:wf-etf}. CORN-K has not been run.
+The \texttt{cvxpy} solver reports ``solution may be inaccurate'' for some
+periods of CORN's portfolio step, which has not been investigated.
 
 \subsection{CORN-Sig: Matching Windows by Path Signature}
 \label{sec:corn-sig}
@@ -1065,7 +1066,9 @@ it sees the whole shape of the recent return distribution, spread and
 tails included. A window's distribution function depends only on its own
 days, so it is computed once and kept between periods. We checked the stored
 functions against a direct computation of the distance for each window on
-synthetic data, with a largest difference below $10^{-8}$.
+synthetic data, with a largest difference below $10^{-8}$. All four
+strategies have been run on both universes
+(Sections~\ref{sec:wf-djia} and~\ref{sec:wf-etf}).
 
 \subsection{Combining the Strategies: Hedge with Fixed Share}
 \label{sec:fixed-share}
@@ -1077,8 +1080,9 @@ whether it can do so without knowing in advance which one that is.
 
 We use eight experts: BAH, CRP, UP, EG, Anticor, PAMR-2, CWMR and OLMAR-2,
 each at its default parameter. Best Stock is excluded because it uses
-hindsight, ONS because of its cost, and CORN unless it has been run. The
-combiner keeps a weight $q_{t,i}$ on each of the $K$ experts, starting
+hindsight, ONS because of its cost, and CORN, which is added only when the
+\texttt{INCLUDE\_CORN} flag is on. The combiner results below were computed
+without it. The combiner keeps a weight $q_{t,i}$ on each of the $K$ experts, starting
 uniform. The portfolio it plays is the weighted mix of the experts'
 portfolios, rebalanced every period:
 \[
@@ -1161,13 +1165,16 @@ The comparison has to cover the same days. A segmented universe loses the
 first day of each segment, because the first price relative needs a
 previous price, and SPY skips those same days. The results tables get one
 extra column: the strategy's APY minus SPY's APY over those days. SPY is
-also drawn in every plot.
+also drawn in every DJIA plot.
 
 There are two limits. MSCI World, the other index we considered, is left
 out: the ETF that tracks it (URTH) starts in 2012, so it would cover only
 the last 14 years of the 26-year DJIA window. And in the ETF universe SPY
-is one of the five assets, so beating SPY there means beating one of the
-strategy's own inputs.
+is one of the five assets, so beating SPY there would mean beating one of
+the strategy's own inputs. We therefore use SPY as a reference on the DJIA
+only. The ETF results have no SPY series, no APY-versus-SPY column and no
+reference line in the plots; the strategies are compared with each other,
+and BAH and CRP are the passive alternatives.
 
 \subsection{Running Strategies One at a Time and Storing Results}
 \label{sec:storing}
@@ -1431,8 +1438,12 @@ subsection reports the procedure of Section~\ref{sec:walk-forward}
 instead: each January the parameter is chosen from the past alone, and the
 combiners of Sections~\ref{sec:fixed-share} and~\ref{sec:policy} are
 included. The window is the same 26.7 years, and SPY is added as the
-reference of Section~\ref{sec:spy}. The CORN family is not in this table
-because it has not been run on this window.
+reference of Section~\ref{sec:spy}. ONS, CORN, CORN-Sig, CORN-U, BNN and
+the three Wasserstein variants are in the table. ONS is run once at its
+default parameter, not selected by walk-forward, because of its cost.
+CORN-K is not in the table, since it has not been run. The
+combiners still mix the eight experts of Section~\ref{sec:fixed-share},
+none of them a CORN or BNN strategy.
 
 \begin{table}[h]
 \centering
@@ -1444,12 +1455,20 @@ Strategy & Final $S_n$ & APY & Vol. & Sharpe & $t$ (p) & APY $-$ SPY \\
 BAH                    & 10.1616 & $+$9.13\% & 18.55\% & 0.28 & 2.90 (0.002) & $+$0.69\% \\
 CRP                    & 12.2067 & $+$9.88\% & 19.50\% & 0.30 & 2.99 (0.001) & $+$1.45\% \\
 UP                     & 12.2184 & $+$9.89\% & 19.46\% & 0.30 & 3.00 (0.001) & $+$1.45\% \\
+ONS                    & 10.1278 & $+$9.11\% & 37.63\% & 0.14 & 2.19 (0.014) & $+$0.68\% \\
 EG                     & 12.1346 & $+$9.86\% & 19.49\% & 0.30 & 2.99 (0.001) & $+$1.42\% \\
 Anticor                & 68.6938 & $+$17.27\% & 37.09\% & 0.36 & 3.14 (0.001) & $+$8.84\% \\
 PAMR                   & 8.6849 & $+$8.48\% & 22.56\% & 0.20 & 2.44 (0.007) & $+$0.05\% \\
 PAMR-2                 & 16.2527 & $+$11.07\% & 27.07\% & 0.26 & 2.70 (0.003) & $+$2.64\% \\
 CWMR                   & 0.0224 & $-$13.33\% & 43.78\% & $-$0.40 & $-$0.49 (0.689) & $-$21.77\% \\
 OLMAR-2                & 0.6869 & $-$1.40\% & 47.93\% & $-$0.11 & 1.13 (0.129) & $-$9.84\% \\
+CORN                   & 6.1681 & $+$7.09\% & 30.58\% & 0.10 & 1.94 (0.026) & $-$1.34\% \\
+CORN-Sig               & 3.7175 & $+$5.07\% & 34.45\% & 0.03 & 1.64 (0.050) & $-$3.37\% \\
+CORN-U                 & 12.5871 & $+$10.01\% & 24.52\% & 0.25 & 2.64 (0.004) & $+$1.57\% \\
+BNN                    & 10.7302 & $+$9.35\% & 30.42\% & 0.18 & 2.29 (0.011) & $+$0.92\% \\
+BNN-Hist               & 0.9908 & $-$0.03\% & 32.67\% & $-$0.12 & 0.84 (0.201) & $-$8.47\% \\
+BNN-KDE                & 0.8449 & $-$0.63\% & 31.14\% & $-$0.15 & 0.70 (0.243) & $-$9.07\% \\
+BNN-Gauss              & 0.1393 & $-$7.16\% & 32.80\% & $-$0.34 & $-$0.32 (0.625) & $-$15.59\% \\
 Fixed Share            & 7.8293 & $+$8.06\% & 22.30\% & 0.18 & 2.37 (0.009) & $-$0.38\% \\
 Equal-weight experts   & 5.1922 & $+$6.40\% & 26.25\% & 0.09 & 1.90 (0.029) & $-$2.03\% \\
 PolicyExperts          & 8.8056 & $+$8.54\% & 29.19\% & 0.16 & 2.20 (0.014) & $+$0.10\% \\
@@ -1462,7 +1481,8 @@ Best Stock$^*$         & 11385.9358 & $+$42.17\% & 29.13\% & 1.31 & 6.97 (0.000)
 \caption{Walk-forward results, 2000-01-01 to 2026-09-01, reconstitution-tracked
 Dow Jones universe. Parameters are chosen each January by Sharpe ratio over
 the past, with the starting value of Table~\ref{tab:grids} for the first
-three years. The last column is APY minus SPY's APY over the same days.
+three years, except ONS, which is run at its default. The last column is
+APY minus SPY's APY over the same days.
 $^*$Best Stock is a hindsight-only upper bound. Drawdown and Calmar
 figures are in \texttt{results/djia/metrics.csv}; they use the absolute
 drawdown noted in Table~\ref{tab:results-full} and are left out here.}
@@ -1481,6 +1501,42 @@ Section~\ref{sec:pamr-tuning} avoided $C=0.1$ as untrustworthy, but the
 selected path ends within 0.5\% of the $16.17\times$ obtained at $C=1$.
 CWMR and OLMAR-2 still lose money, ending at $0.02\times$ and
 $0.69\times$.
+
+Among the CORN strategies, CORN-U is the only one above SPY. It
+ends at $12.59\times$ ($+10.01\%$ APY), 1.57 points ahead and a little above
+CRP, UP and EG (about $12.2\times$), but with 24.5\% volatility against
+their 19.5\%, so its Sharpe ratio of 0.25 is below their 0.30. CORN ends at
+$6.17\times$ ($+7.09\%$), 1.34 points below SPY. CORN-Sig ends at
+$3.72\times$ ($+5.07\%$) with a Sharpe ratio of 0.03, and its t-test gives
+$p=0.050$, the weakest evidence of positive returns among the strategies
+that made money. All three are far from Anticor. CORN-U chose $\rho=0.1$ in
+23 of 24 years, which is its starting value, so the selection added little.
+CORN chose $(10, 0.3)$ in 13 years and $(5, 0.1)$ in 9. CORN-Sig chose $w=3$
+in 20 years and $q=0.05$ in 21, the smallest values of its grid, so a better
+value may lie below it, which we did not test. Replacing the correlation by
+the signature distance did not help on this universe: CORN-Sig ends below
+CORN, whose grid has the same shape. The three strategies use the SCS retry
+of Section~\ref{sec:corn-sig} whenever Clarabel fails; we did not count how
+often that happened.
+
+The nearest-neighbour strategies split in two. The Euclidean BNN ends at
+$10.73\times$ ($+9.35\%$ APY), 0.92 points above SPY, but with 30.4\%
+volatility and a Sharpe ratio of 0.18, below SPY's 0.23. The three
+Wasserstein variants do not make money: BNN-Hist ends at $0.99\times$,
+BNN-KDE at $0.84\times$ and BNN-Gauss at $0.14\times$ ($-7.16\%$ APY), and
+none of their t-tests rejects zero mean return ($p$ from 0.20 to 0.63).
+This is the reverse of the ETF universe, where BNN-Gauss was the best of
+the three (Section~\ref{sec:wf-etf}). The selection often chose the edge of
+the grid: $w=5$ for BNN in 17 of 24 years, and $(w,q)=(40,0.2)$, the longest
+window and the largest fraction, in 10 years for BNN-Hist, 11 for BNN-KDE and
+4 for BNN-Gauss. We did not test why distances between return distributions
+fail on individual stocks, nor whether the grid is the cause.
+
+ONS, run once at its default parameter, ends at $10.13\times$ ($+9.11\%$
+APY), 0.68 points above SPY and below CRP, UP and EG. Its volatility of
+37.6\% is almost twice theirs, which leaves a Sharpe ratio of 0.14 against
+0.30. Since ONS was not tuned, this is not directly comparable with the
+walk-forward rows.
 
 The combiners do not do better than their best experts. Fixed Share ends
 at $7.83\times$ ($+8.06\%$ APY), 0.38 points below SPY, and the
@@ -1534,15 +1590,17 @@ rather than addressed immediately, each for a stated reason:
     \texttt{get\_prices} indirection in \texttt{data.py} exists
     specifically so that migration touches one function, not every
     strategy or script.
-    \item \textbf{ONS does not appear in the 2000-2026 results.} Its
-    $O(n^2)$ \texttt{cvxpy}-solver cost (Section~\ref{sec:ons}) is an
-    estimated 50+ hours at this window's scale (Section~\ref{sec:broaden}),
-    benchmarked directly rather than assumed. It remains implemented and
-    is included wherever earlier, shorter windows are reported; a
-    documented flag (\texttt{INCLUDE\_ONS}) controls whether it runs on
-    the full window, left off by default. Making it tractable at this
-    scale would mean revisiting the stateless, no-cached-state design
-    that Section~\ref{sec:ons} deliberately chose.
+    \item \textbf{ONS is run once at its default parameter, and only on
+    the DJIA.} Its $O(n^2)$ \texttt{cvxpy}-solver cost
+    (Section~\ref{sec:ons}) was estimated at 50+ hours for the 2000-2026
+    window (Section~\ref{sec:broaden}), so it stays off by default behind
+    \texttt{INCLUDE\_ONS} and is run by naming it with \texttt{--only}.
+    It now has a DJIA result (Table~\ref{tab:wf-djia}), but without the
+    walk-forward selection, and we did not record how long the run took, so
+    the estimate has not been checked against it. On the ETF universe, a
+    single segment of 4,906 periods, it has not been completed. Making it
+    cheap would mean revisiting the stateless, no-cached-state design that
+    Section~\ref{sec:ons} deliberately chose.
     \item \textbf{A known but unfixed data bug.} \texttt{yfinance} returns
     multi-ticker downloads with columns sorted alphabetically rather than
     in the order tickers were requested. This does not affect any
@@ -1914,51 +1972,58 @@ the question Section~\ref{sec:etf} set out to check.
 Table~\ref{tab:wf-etf} applies the walk-forward procedure and the
 combiners to the ETF universe: 4,906 periods from 2007-03-01 to
 2026-09-01, with the first selection in 2010. SPY is one of the five
-assets here, so Best Stock is SPY itself and its row is identical. Beating
-SPY therefore means beating one of the strategy's own inputs
-(Section~\ref{sec:spy}). The CORN family is not in the table because it
-has not been run.
+assets here, so Best Stock is the buy-and-hold of SPY, and there is no
+separate market reference (Section~\ref{sec:spy}). CORN, CORN-Sig, CORN-U, the Euclidean BNN and the
+three Wasserstein variants BNN-Hist, BNN-KDE and BNN-Gauss are in the table.
+CORN-K and ONS have not been run on this universe. The combiners again mix
+the eight experts without any CORN or BNN strategy.
 
 \begin{table}[h]
 \centering
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrr}
 \toprule
-Strategy & Final $S_n$ & APY & Vol. & Sharpe & $t$ (p) & APY $-$ SPY \\
+Strategy & Final $S_n$ & APY & Vol. & Sharpe & $t$ (p) \\
 \midrule
-BAH                    & 3.7207 & $+$6.98\% & 8.72\% & 0.34 & 3.61 (0.000) & $-$4.15\% \\
-CRP                    & 3.4620 & $+$6.59\% & 7.60\% & 0.34 & 3.87 (0.000) & $-$4.55\% \\
-UP                     & 3.5120 & $+$6.67\% & 7.70\% & 0.35 & 3.87 (0.000) & $-$4.47\% \\
-EG                     & 3.4440 & $+$6.56\% & 7.69\% & 0.33 & 3.81 (0.000) & $-$4.57\% \\
-Anticor                & 3.7055 & $+$6.96\% & 17.50\% & 0.17 & 2.08 (0.019) & $-$4.17\% \\
-PAMR                   & 11.2350 & $+$13.23\% & 18.10\% & 0.51 & 3.43 (0.000) & $+$2.10\% \\
-PAMR-2                 & 12.4428 & $+$13.83\% & 15.27\% & 0.64 & 4.08 (0.000) & $+$2.69\% \\
-CWMR                   & 11.4152 & $+$13.32\% & 18.14\% & 0.51 & 3.44 (0.000) & $+$2.19\% \\
-OLMAR-2                & 23.7556 & $+$17.67\% & 18.63\% & 0.73 & 4.26 (0.000) & $+$6.54\% \\
-Fixed Share            & 14.5851 & $+$14.76\% & 15.29\% & 0.70 & 4.31 (0.000) & $+$3.63\% \\
-Equal-weight experts   & 5.7499 & $+$9.40\% & 9.79\% & 0.55 & 4.27 (0.000) & $-$1.73\% \\
-PolicyExperts          & 17.5727 & $+$15.86\% & 15.82\% & 0.75 & 4.46 (0.000) & $+$4.73\% \\
-SPY                    & 7.8057 & $+$11.13\% & 19.63\% & 0.36 & 2.81 (0.003) & $+$0.00\% \\
+BAH                    & 3.7207 & $+$6.98\% & 8.72\% & 0.34 & 3.61 (0.000) \\
+CRP                    & 3.4620 & $+$6.59\% & 7.60\% & 0.34 & 3.87 (0.000) \\
+UP                     & 3.5120 & $+$6.67\% & 7.70\% & 0.35 & 3.87 (0.000) \\
+EG                     & 3.4440 & $+$6.56\% & 7.69\% & 0.33 & 3.81 (0.000) \\
+Anticor                & 3.7055 & $+$6.96\% & 17.50\% & 0.17 & 2.08 (0.019) \\
+PAMR                   & 11.2350 & $+$13.23\% & 18.10\% & 0.51 & 3.43 (0.000) \\
+PAMR-2                 & 12.4428 & $+$13.83\% & 15.27\% & 0.64 & 4.08 (0.000) \\
+CWMR                   & 11.4152 & $+$13.32\% & 18.14\% & 0.51 & 3.44 (0.000) \\
+OLMAR-2                & 23.7556 & $+$17.67\% & 18.63\% & 0.73 & 4.26 (0.000) \\
+CORN                   & 9.5031 & $+$12.26\% & 16.82\% & 0.49 & 3.41 (0.000) \\
+CORN-Sig               & 6.9059 & $+$10.44\% & 17.11\% & 0.38 & 2.94 (0.002) \\
+CORN-U                 & 6.0991 & $+$9.73\% & 13.60\% & 0.42 & 3.31 (0.000) \\
+BNN                    & 18.5349 & $+$16.18\% & 18.61\% & 0.65 & 3.97 (0.000) \\
+BNN-Hist              & 3.6089 & $+$6.81\% & 16.68\% & 0.17 & 2.11 (0.017) \\
+BNN-KDE                & 2.7376 & $+$5.31\% & 16.82\% & 0.08 & 1.73 (0.042) \\
+BNN-Gauss              & 8.9877 & $+$11.94\% & 17.03\% & 0.47 & 3.30 (0.000) \\
+Fixed Share            & 14.5851 & $+$14.76\% & 15.29\% & 0.70 & 4.31 (0.000) \\
+Equal-weight experts   & 5.7499 & $+$9.40\% & 9.79\% & 0.55 & 4.27 (0.000) \\
+PolicyExperts          & 17.5727 & $+$15.86\% & 15.82\% & 0.75 & 4.46 (0.000) \\
 \midrule
-Best Stock$^*$         & 7.8057 & $+$11.13\% & 19.63\% & 0.36 & 2.81 (0.003) & $+$0.00\% \\
+Best Stock$^*$         & 7.8057 & $+$11.13\% & 19.63\% & 0.36 & 2.81 (0.003) \\
 \bottomrule
 \end{tabular}%
 }
 \caption{Walk-forward results, 2007-03-01 to 2026-09-01, cross-asset ETF
-universe. Same procedure and columns as Table~\ref{tab:wf-djia}.
-$^*$Best Stock is a hindsight-only upper bound; here it coincides with
-SPY. Drawdown and Calmar figures are in
+universe. Same procedure and columns as Table~\ref{tab:wf-djia}, without
+the APY-versus-SPY column. $^*$Best Stock is a hindsight-only upper
+bound; here it is the buy-and-hold of SPY. Drawdown and Calmar figures are in
 \texttt{results/etf/metrics.csv}.}
 \label{tab:wf-etf}
 \end{table}
 
-The mean-reversion strategies all beat SPY. OLMAR-2 reaches $23.76\times$
-($+17.67\%$ APY, 6.5 points above SPY), followed by PAMR-2 at
-$12.44\times$, CWMR at $11.42\times$ and PAMR at $11.24\times$. BAH, CRP,
-UP and EG end between $3.4\times$ and $3.7\times$, 4.1 to 4.6 points below
-SPY, but with 7.6--8.7\% volatility against SPY's 19.6\%. Their Sharpe
-ratios of 0.33--0.35 are close to SPY's 0.36. Anticor ends at $3.71\times$
-with a Sharpe ratio of 0.17.
+The mean-reversion strategies lead the table. OLMAR-2 reaches
+$23.76\times$ ($+17.67\%$ APY), followed by PAMR-2 at $12.44\times$, CWMR
+at $11.42\times$ and PAMR at $11.24\times$. BAH, CRP, UP and EG end between
+$3.4\times$ and $3.7\times$, with 7.6--8.7\% volatility against 15--19\%
+for the mean-reversion strategies. Their Sharpe ratios of 0.33--0.35 are
+below the 0.51--0.73 of those four. Anticor ends at $3.71\times$ with a
+Sharpe ratio of 0.17.
 
 Two results differ from Table~\ref{tab:results-etf}. PAMR-2 is no longer
 the worst strategy: the walk-forward selection picks $C=100$ in 12 years
@@ -1973,8 +2038,30 @@ the largest $C$, CWMR at $\phi=2.33$ in 15 of 17 years, and EG at both
 ends. As with the first run of the grids (Section~\ref{sec:walk-forward}),
 the best values may lie outside what we tried, and we did not test it.
 
+The pattern matching strategies fall between the two groups. CORN ends at
+$9.50\times$ ($+12.26\%$ APY, Sharpe 0.49): below the four
+mean-reversion strategies, well above BAH, CRP, UP and EG. CORN-Sig
+($6.91\times$, $+10.44\%$) and CORN-U ($6.10\times$, $+9.73\%$) finish
+below CORN, although CORN-U has the lowest volatility of the three (13.6\%)
+and a Sharpe ratio of 0.42, above CORN-Sig's 0.38. CORN is ahead
+of CORN-U here, the opposite of the DJIA, and CORN-Sig is again below CORN.
+Among the nearest-neighbour strategies, the Euclidean BNN is by far the
+best. It ends at $18.53\times$ ($+16.18\%$ APY, Sharpe 0.65). Only
+OLMAR-2 has a higher final wealth, and BNN is ahead of
+PAMR-2, CWMR, PAMR, every CORN strategy and Fixed Share, although
+PolicyExperts is close ($17.57\times$). It chose $(w,q)=(5,0.1)$ in 9 of
+17 years. BNN-Gauss reaches $8.99\times$
+($+11.94\%$, Sharpe 0.47), while BNN-Hist ends at $3.61\times$ and BNN-KDE
+at $2.74\times$, with Sharpe ratios of 0.17 and 0.08.
+The three differ only in how the distribution of a window is estimated, and
+the two that keep its whole shape do worse than the one that keeps only the
+mean and the deviation. We did not test why. Windows hold 5 to 40 days, so a
+histogram or a kernel density rests on few values, which may be part of it.
+BNN-Gauss chose $(5, 0.2)$ in all 17 years, a corner of its grid, and
+CORN-Sig chose $q=0.2$, the largest value, in 14 of 17.
+
 The combiners do better here than on the DJIA. Fixed Share ends at
-$14.59\times$ ($+14.76\%$ APY, Sharpe 0.70, 3.6 points above SPY), and the
+$14.59\times$ ($+14.76\%$ APY, Sharpe 0.70), and the
 equal-weight mix at $5.75\times$. PolicyExperts ends at $17.57\times$
 ($+15.86\%$) with a Sharpe ratio of 0.75, the highest in the table and
 just above OLMAR-2's 0.73. OLMAR-2 still has the higher final wealth, so
@@ -1984,14 +2071,14 @@ in 16 of 17 years, with $\eta=2$ in the other.
 
 The five PolicyExperts seeds range from $+15.21\%$ to $+16.43\%$ APY,
 with mean $+15.83\%$ and standard deviation $0.49\%$. All five finish
-above Fixed Share and more than 4 points above SPY, so here the seed does
+above Fixed Share, so here the seed does
 not change the conclusion. The margin over Fixed Share is small next to the
 spread, though: the weakest seed is 0.45 points ahead, the mean 1.07.
 
 The contrast with Section~\ref{sec:wf-djia} is the same one this section
 keeps finding. The combiner code is unchanged, but on the DJIA both
 combiners finish behind Anticor, PAMR-2 and the CRP/UP/EG group, and here
-they finish ahead of everything but OLMAR-2. The experts differ between
+they finish ahead of everything but OLMAR-2 and the Euclidean BNN. The experts differ between
 the two universes: four mean-reversion strategies are profitable here,
 while on the DJIA two of them lose money. We expect that to explain much of the
 difference, but did not isolate it.
@@ -2058,16 +2145,26 @@ narrower question than it should be.
 
 The latest additions concern how results are measured more than which
 algorithms exist. Parameters are now chosen year by year from the past
-alone (Section~\ref{sec:walk-forward}), SPY is the reference
-(Section~\ref{sec:spy}), and two ways of combining the strategies were
+alone (Section~\ref{sec:walk-forward}), SPY is the reference on the
+DJIA (Section~\ref{sec:spy}), and two ways of combining the strategies were
 tried (Sections~\ref{sec:fixed-share} and~\ref{sec:policy}). The outcome
 depends on the universe again. On the DJIA neither combiner beats the best
 single strategy, or even the CRP/UP/EG group, while on the ETF universe both
-finish ahead of every strategy except OLMAR-2, and PolicyExperts has the
-highest Sharpe ratio. The learned combiner also depends on its random seed
+finish ahead of every strategy except OLMAR-2 and the Euclidean BNN, and
+PolicyExperts has the highest Sharpe ratio. The learned combiner also depends on its random seed
 by about a point of APY on the DJIA, so a single run says little.
+Pattern matching also depends on the universe. CORN-U is the only CORN
+strategy above SPY on the DJIA, CORN is the best of them on the ETFs, and the
+signature distance of CORN-Sig ends below plain CORN on both. Among the
+nearest-neighbour strategies, the Euclidean BNN beats SPY on the DJIA
+(with a lower Sharpe ratio) and has the second-highest final wealth on the
+ETFs, with a Sharpe ratio of 0.65. BNN-Gauss does well only on the ETFs,
+and BNN-Hist and BNN-KDE on neither. The three Wasserstein variants
+lose money on the DJIA, which we did not explain. ONS, run at its default
+parameter, ends 0.68 points above SPY on the DJIA with twice the volatility of
+CRP.
 Results are now stored per strategy and can be rerun one at a time
-(Section~\ref{sec:storing}). The CORN family and ONS are implemented but
-their walk-forward benchmark has not been run.
+(Section~\ref{sec:storing}). CORN-K is implemented but has not been run, and
+ONS has no result on the ETF universe.
 
 \end{document}
