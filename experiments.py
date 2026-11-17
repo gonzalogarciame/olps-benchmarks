@@ -60,6 +60,8 @@ class Universe:
     load: Callable[[list], list[pd.DataFrame]]
     include_ons: bool
     include_corn: bool
+    # SPY is one of the ETF universe's own assets, so it is no benchmark there
+    benchmark: str | None = "SPY"
 
     @cached_property
     def dfs(self) -> list[pd.DataFrame]:
@@ -94,9 +96,12 @@ class Universe:
             out.append(strategy_portfolios(self.name, name, param, factory, self.segment_arrays))
         return out
 
+    def names(self) -> list[str]:
+        return [n for n in ALL if n != "SPY" or self.benchmark]
+
     def default_names(self) -> list[str]:
         return [
-            n for n in ALL if (n != "ONS" or self.include_ons) and (n not in SLOW or self.include_corn)
+            n for n in self.names() if (n != "ONS" or self.include_ons) and (n not in SLOW or self.include_corn)
         ]
 
 
@@ -214,9 +219,9 @@ class Store:
             os.replace(tmp, self.dir / filename)
 
 
-def metrics_row(wealth: np.ndarray, spy_apy: float) -> dict:
+def metrics_row(wealth: np.ndarray, spy_apy: float | None) -> dict:
     t_stat, p_value = t_test(wealth)
-    return {
+    row = {
         "final_wealth": wealth[-1],
         "apy": apy(wealth),
         "volatility": volatility(wealth),
@@ -225,23 +230,29 @@ def metrics_row(wealth: np.ndarray, spy_apy: float) -> dict:
         "calmar": calmar_ratio(wealth),
         "t_stat": t_stat,
         "p_value": p_value,
-        "apy_vs_spy": apy(wealth) - spy_apy,
     }
+    if spy_apy is not None:
+        row["apy_vs_spy"] = apy(wealth) - spy_apy
+    return row
 
 
 def report(name: str, m: dict) -> None:
-    print(
+    line = (
         f"{name:10s} final wealth = {m['final_wealth']:.4f}  APY = {m['apy']:+.2%}  "
         f"vol = {m['volatility']:.2%}  Sharpe = {m['sharpe']:.2f}  "
         f"MDD = {m['max_drawdown']:.2%}  Calmar = {m['calmar']:.2f}  "
-        f"t = {m['t_stat']:.2f} (p = {m['p_value']:.3f})  vs SPY = {m['apy_vs_spy']:+.2%}"
+        f"t = {m['t_stat']:.2f} (p = {m['p_value']:.3f})"
     )
+    if "apy_vs_spy" in m:
+        line += f"  vs SPY = {m['apy_vs_spy']:+.2%}"
+    print(line)
 
 
 def update(u: Universe, only: list[str] | None, force: bool, no_run: bool = False):
     store = Store(u.name)
-    keys = {name: key(u, name) for name in ALL}
-    targets = ["SPY"] + [n for n in (only or u.default_names()) if n != "SPY"]
+    names = u.names()
+    keys = {name: key(u, name) for name in names}
+    targets = (["SPY"] if u.benchmark else []) + [n for n in (only or u.default_names()) if n != "SPY" and n in names]
     for name in targets:
         if not force and store.valid(name, keys[name]):
             continue
@@ -251,14 +262,14 @@ def update(u: Universe, only: list[str] | None, force: bool, no_run: bool = Fals
         store.put(name, wealth, picks, extra, keys[name], u.plot_dates)
         print(f"  {name} done in {time.time() - t0:.0f}s, saved to {store.dir}")
 
-    wealths = {n: store.wealth[n].values for n in ALL if store.valid(n, keys[n])}
-    stale = [n for n in ALL if n in store.wealth.columns and n not in wealths]
+    wealths = {n: store.wealth[n].values for n in names if store.valid(n, keys[n])}
+    stale = [n for n in names if n in store.wealth.columns and n not in wealths]
     if stale:
         print(f"stored but outdated, not shown (rerun with --only): {', '.join(stale)}")
 
-    if "SPY" not in wealths:
+    if not wealths:
         raise SystemExit(f"nothing stored in {store.dir} yet; run once without --no-run")
-    spy_apy = apy(wealths["SPY"])
+    spy_apy = apy(wealths["SPY"]) if u.benchmark else None
     seeds = {
         c: store.wealth[c].values
         for c in store.wealth.columns
@@ -281,7 +292,7 @@ def update(u: Universe, only: list[str] | None, force: bool, no_run: bool = Fals
 def print_status(u: Universe) -> None:
     store = Store(u.name)
     default = u.default_names()
-    for name in ALL:
+    for name in u.names():
         if store.valid(name, key(u, name)):
             status = "stored"
         elif name in store.wealth.columns:
@@ -296,6 +307,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--only", nargs="+", choices=ALL, metavar="NAME", help="run just these strategies")
     p.add_argument("--force", action="store_true", help="recompute even if stored results are up to date")
     p.add_argument("--no-run", action="store_true", help="compute nothing, use stored results only")
-    p.add_argument("--plot", nargs="+", choices=ALL, metavar="NAME", help="draw only these strategies (and SPY) in one custom plot")
+    p.add_argument("--plot", nargs="+", choices=ALL, metavar="NAME", help="draw only these strategies (and the SPY reference on the DJIA) in one custom plot")
     p.add_argument("--list", action="store_true", help="show which strategies are stored, then exit")
     return p.parse_args()

@@ -43,19 +43,11 @@ GRID_PLOT_PATH = f"{OUTPUT_DIR}/etf_wealth_curves_per_strategy_grid.png"
 
 LINESTYLES = ["-", "--", ":", "-.", (0, (3, 1, 1, 1)), (0, (5, 1))]
 
-STEADY_GROUP = ["BAH", "CRP", "UP", "EG", "SPY"]
-AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN", "CORN-U", "CORN-K", "FixedShare", "PolicyExperts", "SPY"]
+STEADY_GROUP = ["BAH", "CRP", "UP", "EG"]
+AGGRESSIVE_GROUP = ["ONS", "Anticor", "PAMR2", "CWMR", "OLMAR2", "CORN", "CORN-U", "CORN-K", "FixedShare", "PolicyExperts"]
 
 # same variants plotted as in run.py; plain PAMR is run and reported only
 PLOT_EXCLUDE = {"BestStock", "PAMR", "ExpertsEW"}
-
-# SPY is the S&P 500 total return, a buy-and-hold reference every strategy
-# is judged against, so it is drawn the same way everywhere
-SPY_STYLE = {"color": "black", "linestyle": ":", "linewidth": 1.5}
-
-
-def _style(name: str, linestyle) -> dict:
-    return SPY_STYLE if name == "SPY" else {"linestyle": linestyle}
 
 
 def _load_segment(seg_start: str, seg_end: str, tickers: list[str]) -> pd.DataFrame:
@@ -70,7 +62,8 @@ def _load_segments(segments_meta: list) -> list[pd.DataFrame]:
 def main() -> None:
     args = experiments.parse_args()
     universe = experiments.Universe(
-        "etf", START, END, etf_universe.segments(START, END), _load_segments, INCLUDE_ONS, INCLUDE_CORN
+        "etf", START, END, etf_universe.segments(START, END), _load_segments, INCLUDE_ONS, INCLUDE_CORN,
+        benchmark=None,
     )
     if args.list:
         experiments.print_status(universe)
@@ -79,7 +72,7 @@ def main() -> None:
     wealths, plot_dates = experiments.update(universe, args.only, args.force, args.no_run)
 
     if args.plot:
-        chosen = {n: w for n, w in wealths.items() if n in args.plot or n == "SPY"}
+        chosen = {n: w for n, w in wealths.items() if n in args.plot}
         _plot_combined(chosen, plot_dates, PLOT_PATH.replace(".png", "_custom.png"), exclude=set())
         return
     _plot_combined(wealths, plot_dates, PLOT_PATH, PLOT_EXCLUDE)
@@ -103,7 +96,7 @@ def _plot_combined(wealths: dict, plot_dates: pd.DatetimeIndex, path: str, exclu
     fig, ax = plt.subplots()
     for (name, wealth), linestyle in zip(wealths.items(), itertools.cycle(LINESTYLES)):
         if name not in exclude:
-            ax.plot(plot_dates, wealth, label=name, **_style(name, linestyle))
+            ax.plot(plot_dates, wealth, label=name, linestyle=linestyle)
 
     ax.set_xlabel("date")
     ax.set_ylabel("cumulative wealth (log scale)")
@@ -120,7 +113,7 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
     steady = [name for name in STEADY_GROUP if name in wealths]
     for name, linestyle in zip(steady, itertools.cycle(LINESTYLES)):
-        ax_steady.plot(plot_dates, wealths[name], label=name, **_style(name, linestyle))
+        ax_steady.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
     ax_steady.set_ylabel("cumulative wealth (log scale)")
     _log_axis(ax_steady)
     ax_steady.set_title("Steady: no concentrated single-period bets")
@@ -128,7 +121,7 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
     aggressive = [name for name in AGGRESSIVE_GROUP if name in wealths]
     for name, linestyle in zip(aggressive, itertools.cycle(LINESTYLES)):
-        ax_aggressive.plot(plot_dates, wealths[name], label=name, **_style(name, linestyle))
+        ax_aggressive.plot(plot_dates, wealths[name], label=name, linestyle=linestyle)
     ax_aggressive.set_ylabel("cumulative wealth (log scale)")
     _log_axis(ax_aggressive)
     ax_aggressive.set_title("Aggressive: large single-period rebalancing bets")
@@ -143,13 +136,12 @@ def _plot_grouped(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
 
 
 def _plot_grid(wealths: dict, plot_dates: pd.DatetimeIndex) -> None:
-    names = [name for name in wealths if name not in PLOT_EXCLUDE | {"SPY"}]
+    names = [name for name in wealths if name not in PLOT_EXCLUDE]
     n_cols = math.ceil(math.sqrt(len(names)))
     n_rows = math.ceil(len(names) / n_cols)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(11, 3.2 * n_rows), sharex=True, sharey=True)
     axes_flat = axes.flat if hasattr(axes, "flat") else [axes]
     for ax, name in zip(axes_flat, names):
-        ax.plot(plot_dates, wealths["SPY"], color="gray", linestyle=":", linewidth=1)
         ax.plot(plot_dates, wealths[name])
         _log_axis(ax)
         ax.set_title(name)
