@@ -26,3 +26,4 @@ memoria/*.lof
 memoria/*.lot
 memoria/*.zip
 !memoria/LogoUniversidadBN.pdf
+.vscode/
