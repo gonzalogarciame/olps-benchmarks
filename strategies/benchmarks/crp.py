@@ -14,4 +14,5 @@ class CRP(Strategy):
         return self._b
 
     def update(self, history: np.ndarray) -> np.ndarray:
+        # history is not needed
         return self._b

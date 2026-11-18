@@ -10,6 +10,7 @@ class Strategy(ABC):
         self.n_assets = n_assets
 
     def initial_portfolio(self) -> np.ndarray:
+        # equal weights at the beginning
         return np.full(self.n_assets, 1.0 / self.n_assets)
 
     @abstractmethod

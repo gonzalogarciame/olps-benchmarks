@@ -8,6 +8,7 @@ from strategies.base import Strategy
 class BAH(Strategy):
     def __init__(self, n_assets: int, initial_weights: np.ndarray | None = None):
         super().__init__(n_assets)
+        # None keeps the equal weights of the base class
         self._b1 = None if initial_weights is None else np.asarray(initial_weights, dtype=float)
 
     def initial_portfolio(self) -> np.ndarray:
@@ -17,6 +18,7 @@ class BAH(Strategy):
 
     def update(self, history: np.ndarray) -> np.ndarray:
         b1 = self.initial_portfolio()
+        # total growth of each asset's price since the first day
         cumulative_growth = np.prod(history, axis=0)
         drifted = b1 * cumulative_growth
         return drifted / drifted.sum()
